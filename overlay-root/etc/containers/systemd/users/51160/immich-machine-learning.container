@@ -6,6 +6,7 @@ Documentation=https://docs.immich.app/features/ml-hardware-acceleration/
 [Container]
 ContainerName=immich-machine-learning
 Image=ghcr.io/immich-app/immich-machine-learning:v3.1.0@sha256:5a0839dc5303cd7215bcd2180a26aed3af41675aefb3e75e5157e9f10ad16e6e
+LogDriver=journald
 PodmanArgs=--runtime=krun
 Annotation=krun.cpus=4
 Annotation=krun.ram_mib=4096
@@ -37,6 +38,9 @@ User=1000:1000
 UserNS=keep-id:uid=1000,gid=1000
 NoNewPrivileges=true
 DropCapability=NET_RAW
+
+Environment=IMMICH_LOG_LEVEL=info
+Environment=NO_COLOR=true
 
 # Declarative cache storage
 Volume=/var/lib/immich/machine-learning/models:/cache

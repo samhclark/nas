@@ -55,14 +55,16 @@ architecture or operating instructions.
 4. **Host logging rollout.** The Caddy and VictoriaMetrics journald sources
    established the transport pilot. The first expansion group—Garage,
    vmalert, Alertmanager, blackbox-exporter, Grafana, and Jellyfin exporter—is
-   configured but remains awaiting production
-   validation. Validate it one group at a time through read-only, backend
-   outage, Vector restart, and clean reboot stages before adding Immich,
-   Jellyfin runtime logs, or the media-automation services. Generate Vector's
-   UID sources from the typed Quadlet declarations so collection membership
-   cannot drift from service identity. Coordinate the media-automation group
-   with optional image vendoring where owning entrypoints or console behavior
-   would materially improve testing. Caddy access logs and host
+   configured but remains awaiting production validation. Validate it through
+   read-only, backend outage, Vector restart, and clean reboot stages. The
+   Immich server, PostgreSQL, Valkey, and machine-learning group is the next
+   configured expansion and must wait for that evidence before deployment.
+   Jellyfin runtime logs and the media-automation services follow. Generate
+   Vector's UID sources from the typed Quadlet declarations so collection
+   membership cannot drift from service identity. Coordinate the
+   media-automation group with optional image vendoring where owning
+   entrypoints or console behavior would materially improve testing. Caddy
+   access logs and host
    Mullvad/WireGuard logs remain separate projects. See
    `docs/operations/logging.md`.
 5. **Documentation maintenance.** Keep README focused on operators and

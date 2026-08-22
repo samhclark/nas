@@ -16,6 +16,7 @@ display-name = "Immich server"
 
 [container]
 image = "ghcr.io/immich-app/immich-server:v3.1.0@sha256:b434cb9287eea1471c9974845914d4dd328c9c2d652e446ed4930f99944f0ceb"
+log-driver = "journald"
 network = "host"
 container-user = 1000
 no-new-privileges = true
@@ -34,6 +35,8 @@ REDIS_HOSTNAME = "immich-valkey.krun"
 REDIS_PORT = "6379"
 IMMICH_MACHINE_LEARNING_URL = "http://immich-machine-learning.krun:3003"
 IMMICH_TRUSTED_PROXIES = "10.253.9.2"
+# Immich documents JSON as the structured format for log aggregation.
+IMMICH_LOG_FORMAT = "json"
 
 [krun]
 enabled = true

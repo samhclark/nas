@@ -15,6 +15,7 @@ display-name = "Immich database"
 
 [container]
 image = "ghcr.io/immich-app/postgres:18-vectorchord1.1.1-pgvector0.8.5@sha256:4303394b926b7b7af5d4d15a6372c3cfff4ee994a4cf32c5479aa5ef73972077"
+log-driver = "journald"
 network = "host"
 container-user = 1000
 entrypoint = "/usr/share/nas/immich-database/immich-database-entrypoint.sh"

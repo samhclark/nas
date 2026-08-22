@@ -42,6 +42,38 @@ sources:
     current_boot_only: false
     since_now: false
 
+  immich_database_journald:
+    type: journald
+    include_matches:
+      _UID:
+        - "51140"
+    current_boot_only: false
+    since_now: false
+
+  immich_machine_learning_journald:
+    type: journald
+    include_matches:
+      _UID:
+        - "51160"
+    current_boot_only: false
+    since_now: false
+
+  immich_server_journald:
+    type: journald
+    include_matches:
+      _UID:
+        - "51130"
+    current_boot_only: false
+    since_now: false
+
+  immich_valkey_journald:
+    type: journald
+    include_matches:
+      _UID:
+        - "51150"
+    current_boot_only: false
+    since_now: false
+
   jellyfin_exporter_journald:
     type: journald
     include_matches:
@@ -107,6 +139,38 @@ transforms:
       .host = "nas"
       .service = "grafana"
 
+  immich_database:
+    type: remap
+    inputs:
+      - immich_database_journald
+    source: |
+      .host = "nas"
+      .service = "immich-database"
+
+  immich_machine_learning:
+    type: remap
+    inputs:
+      - immich_machine_learning_journald
+    source: |
+      .host = "nas"
+      .service = "immich-machine-learning"
+
+  immich_server:
+    type: remap
+    inputs:
+      - immich_server_journald
+    source: |
+      .host = "nas"
+      .service = "immich-server"
+
+  immich_valkey:
+    type: remap
+    inputs:
+      - immich_valkey_journald
+    source: |
+      .host = "nas"
+      .service = "immich-valkey"
+
   jellyfin_exporter:
     type: remap
     inputs:
@@ -140,6 +204,10 @@ sinks:
       - caddy
       - garage
       - grafana
+      - immich_database
+      - immich_machine_learning
+      - immich_server
+      - immich_valkey
       - jellyfin_exporter
       - victoria_metrics
       - vmalert

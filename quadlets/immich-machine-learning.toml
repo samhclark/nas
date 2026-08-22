@@ -16,11 +16,19 @@ display-name = "Immich machine learning"
 
 [container]
 image = "ghcr.io/immich-app/immich-machine-learning:v3.1.0@sha256:5a0839dc5303cd7215bcd2180a26aed3af41675aefb3e75e5157e9f10ad16e6e"
+log-driver = "journald"
 network = "host"
 container-user = 1000
 no-new-privileges = true
 drop-capabilities = ["NET_RAW"]
 dns = ["100.100.100.100"]
+
+[container.environment]
+# The pinned ML image uses Rich console output rather than the server's JSON
+# logger. Keep records readable in journald and retain the documented default
+# information level explicitly.
+IMMICH_LOG_LEVEL = "info"
+NO_COLOR = "true"
 
 [krun]
 enabled = true
