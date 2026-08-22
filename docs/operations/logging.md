@@ -58,6 +58,10 @@ Group 1 passes its production gate:
 - Immich PostgreSQL
 - Immich Valkey
 
+The third expansion group is configured behind both earlier production gates:
+
+- Jellyfin runtime logs
+
 The existing Caddy and VictoriaMetrics sources are the production-confirmed
 initial backfill and delivery test. Group 1 extends that same path. Keep the
 new group's status as configured-but-unvalidated until it has completed the
@@ -72,16 +76,14 @@ other fleet artifacts. This prevents
 the collector's UID selectors from becoming a separately maintained list and
 makes omissions or mismatched host identities fail during repository checks.
 
-After Group 1, deploy and validate the configured Immich group. Then proceed in
-this order:
-
-1. Jellyfin runtime logs. Keep Jellyfin's local file and transcode diagnostics
-   in place; journald collection supplements those files.
-2. Sonarr, Radarr, Prowlarr, and SABnzbd as the media-automation group. This
-   group may be coordinated with future vendor/repackaging work so the repo
-   owns the entrypoints, console format, and file-logging behavior where that
-   materially improves testability. Vendoring is useful but is not a
-   prerequisite for the transport path.
+After Group 1, deploy and validate the configured Immich group, followed by the
+configured Jellyfin runtime group. Keep Jellyfin's local file and transcode
+diagnostics in place; journald collection supplements those files. Then deploy
+Sonarr, Radarr, Prowlarr, and SABnzbd as the media-automation group. This
+group may be coordinated with future vendor/repackaging work so the repo owns
+the entrypoints, console format, and file-logging behavior where that
+materially improves testability. Vendoring is useful but is not a prerequisite
+for the transport path.
 
 Caddy access logs remain a separate policy and volume decision from Caddy
 runtime logs. Host Mullvad and WireGuard logs are a separate host-networking
@@ -163,6 +165,7 @@ for spec in \
   '_nas_immichdatabase 51140 immich-database.service' \
   '_nas_immichvalkey 51150 immich-valkey.service' \
   '_nas_immichmachinelearning 51160 immich-machine-learning.service' \
+  '_nas_jellyfin 51120 jellyfin.service' \
   '_nas_jellyfinmetrics 51260 jellyfin-exporter.service' \
   '_nas_victorialogs 51270 victoria-logs.service'; do
   read -r user uid unit <<<"${spec}"
@@ -212,7 +215,7 @@ printf '\n== VictoriaLogs count-only checks (last 24h) ==\n'
 for service in \
   caddy victoria-metrics garage vmalert blackbox-exporter alertmanager grafana \
   immich-server immich-database immich-valkey immich-machine-learning \
-  jellyfin-exporter; do
+  jellyfin jellyfin-exporter; do
   curl -fsSG http://127.0.0.1:9428/select/logsql/query \
     --data-urlencode "query=_stream:{host=\"nas\",service=\"${service}\"} | stats count()" \
     --data-urlencode 'start=now-24h' \

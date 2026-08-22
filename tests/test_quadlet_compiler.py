@@ -71,6 +71,7 @@ class CompilerCharacterizationTests(unittest.TestCase):
             "immich-machine-learning",
             "immich-server",
             "immich-valkey",
+            "jellyfin",
             "jellyfin-exporter",
             "victoria-metrics",
             "vmalert",

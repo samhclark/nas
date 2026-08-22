@@ -45,6 +45,7 @@ class VectorGenerationTests(unittest.TestCase):
             "immich-machine-learning": 51160,
             "immich-server": 51130,
             "immich-valkey": 51150,
+            "jellyfin": 51120,
             "jellyfin-exporter": 51260,
             "victoria-metrics": 51250,
             "vmalert": 51220,

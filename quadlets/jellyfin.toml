@@ -19,8 +19,12 @@ supplemental-groups = ["media"]
 
 [container]
 image = "docker.io/jellyfin/jellyfin:10.11.11@sha256:aefb67e6a7ff1debdd154a78a7bbb780fd0c873d8639210a7f6a2016ad2b35db"
+log-driver = "journald"
 network = "host"
 container-user = 0
+# Keep the pinned image's default logging configuration: it writes the
+# application stream to stdout and rolling application logs under /config/log.
+# The config export therefore preserves Jellyfin and ffmpeg/transcode files.
 # The image healthcheck uses podman exec, which the krun handler does not
 # support. External blackbox monitoring remains the health source of truth.
 health-cmd = "none"

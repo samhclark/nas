@@ -74,6 +74,14 @@ sources:
     current_boot_only: false
     since_now: false
 
+  jellyfin_journald:
+    type: journald
+    include_matches:
+      _UID:
+        - "51120"
+    current_boot_only: false
+    since_now: false
+
   jellyfin_exporter_journald:
     type: journald
     include_matches:
@@ -171,6 +179,14 @@ transforms:
       .host = "nas"
       .service = "immich-valkey"
 
+  jellyfin:
+    type: remap
+    inputs:
+      - jellyfin_journald
+    source: |
+      .host = "nas"
+      .service = "jellyfin"
+
   jellyfin_exporter:
     type: remap
     inputs:
@@ -208,6 +224,7 @@ sinks:
       - immich_machine_learning
       - immich_server
       - immich_valkey
+      - jellyfin
       - jellyfin_exporter
       - victoria_metrics
       - vmalert

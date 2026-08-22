@@ -59,9 +59,11 @@ architecture or operating instructions.
    read-only, backend outage, Vector restart, and clean reboot stages. The
    Immich server, PostgreSQL, Valkey, and machine-learning group is the next
    configured expansion and must wait for that evidence before deployment.
-   Jellyfin runtime logs and the media-automation services follow. Generate
-   Vector's UID sources from the typed Quadlet declarations so collection
-   membership cannot drift from service identity. Coordinate the
+   Jellyfin runtime logging is also configured behind both earlier gates while
+   preserving its local application and transcode diagnostics. The
+   media-automation services follow. Generate Vector's UID sources from the
+   typed Quadlet declarations so collection membership cannot drift from
+   service identity. Coordinate the
    media-automation group with optional image vendoring where owning
    entrypoints or console behavior would materially improve testing. Caddy
    access logs and host
