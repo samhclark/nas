@@ -36,6 +36,11 @@ s3.i.samhclark.com, *.s3.i.samhclark.com {
 	reverse_proxy garage.krun:3900
 }
 
+# VictoriaLogs - logs database and web UI
+logs.i.samhclark.com {
+	reverse_proxy victoria-logs.krun:9428
+}
+
 # VictoriaMetrics - time series database and web UI
 metrics.i.samhclark.com {
 	reverse_proxy victoria-metrics.krun:8428

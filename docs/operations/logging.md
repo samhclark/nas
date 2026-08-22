@@ -16,8 +16,11 @@ logging remain separate projects.
 VictoriaLogs stores seven days of searchable history on
 `tank/victoria-logs/data`, with a pool-filesystem usage guard at 80 percent.
 Grafana Explore reaches it through the provisioned, non-default VictoriaLogs
-datasource. Logs therefore inherit Grafana's current anonymous-admin access
-boundary; VictoriaLogs is not published through Caddy.
+datasource. The VictoriaLogs web UI and API are now also published through
+Caddy at `https://logs.i.samhclark.com/`, which proxies to the service's
+`victoria-logs.krun:9428` endpoint. Logs therefore inherit the current Caddy
+route's access boundary; use the web UI for direct VictoriaLogs exploration
+and Grafana Explore for the provisioned dashboard path.
 
 The local journal remains the emergency diagnostic source. The intended host
 journald policy is persistent storage under `/var/log/journal`, compressed and
