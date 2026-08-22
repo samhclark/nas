@@ -22,6 +22,9 @@ QEMU         ?= qemu-system-x86_64
 QEMU_IMG     ?= qemu-img
 TIMEOUT      ?= timeout
 OVMF_CODE    ?= /usr/share/edk2/ovmf/OVMF_CODE.fd
+CODEX        ?= codex
+MCP_GRAFANA_URL ?= https://visualize.i.samhclark.com
+MCP_GRAFANA_TOKEN_REF ?= op://Private/Grafana Service Account/credential
 BUTANE_IMAGE ?= quay.io/coreos/butane:release@sha256:13fec166cb47a8e053dcc23256c0ca41aaa1c61cab39793832aaf8894ca78c8f
 SHELLCHECK_IMAGE ?= docker.io/koalaman/shellcheck:v0.11.0@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d
 UV           ?= uv
@@ -56,6 +59,18 @@ all: deps check test ## Run deps, check, test, and build (default)
 .PHONY: help
 help: ## Display this help
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z0-9_-]+:.*?##/ { printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
+
+.PHONY: mcp
+mcp: ## Start Codex with the Grafana MCP token loaded from 1Password
+	@set -euo pipefail; \
+	command -v op >/dev/null || { printf "$(COLOR_RED)op is required$(COLOR_RESET)\n" >&2; exit 1; }; \
+	command -v "$(CODEX)" >/dev/null || { printf "$(COLOR_RED)$(CODEX) is required$(COLOR_RESET)\n" >&2; exit 1; }; \
+	token="$$(op read "$(MCP_GRAFANA_TOKEN_REF)")"; \
+	test -n "$$token" || { printf "$(COLOR_RED)1Password returned an empty Grafana token$(COLOR_RESET)\n" >&2; exit 1; }; \
+	printf "$(COLOR_GREEN)Starting Codex with Grafana MCP credentials$(COLOR_RESET)\n"; \
+	GRAFANA_URL="$(MCP_GRAFANA_URL)" \
+	GRAFANA_SERVICE_ACCOUNT_TOKEN="$$token" \
+		exec "$(CODEX)" -c 'mcp_servers.grafana.env_vars=["GRAFANA_URL","GRAFANA_SERVICE_ACCOUNT_TOKEN"]'
 
 ##@ Information
 
