@@ -73,7 +73,7 @@ jobs:
           create-storage-record: false
 
       - name: Sign the published OCI image
-        uses: samhclark/cosign-exec-action@f8a4f58b424b15fa5fee1795fd25e6de48f9609d # v1.1.0
+        uses: samhclark/cosign-exec-action@fd4c037a25705e60a8ba5cf337e48e2088479dd8 # v1.1.1
         env:
           COSIGN_PASSWORD: ${{ secrets.cosign_password }}
           COSIGN_PRIVATE_KEY: ${{ secrets.cosign_private_key }}
