@@ -62,6 +62,13 @@ The third expansion group is configured behind both earlier production gates:
 
 - Jellyfin runtime logs
 
+The final planned runtime group is configured behind all three earlier gates:
+
+- Sonarr
+- Radarr
+- Prowlarr
+- SABnzbd
+
 The existing Caddy and VictoriaMetrics sources are the production-confirmed
 initial backfill and delivery test. Group 1 extends that same path. Keep the
 new group's status as configured-but-unvalidated until it has completed the
@@ -79,11 +86,10 @@ makes omissions or mismatched host identities fail during repository checks.
 After Group 1, deploy and validate the configured Immich group, followed by the
 configured Jellyfin runtime group. Keep Jellyfin's local file and transcode
 diagnostics in place; journald collection supplements those files. Then deploy
-Sonarr, Radarr, Prowlarr, and SABnzbd as the media-automation group. This
-group may be coordinated with future vendor/repackaging work so the repo owns
-the entrypoints, console format, and file-logging behavior where that
-materially improves testability. Vendoring is useful but is not a prerequisite
-for the transport path.
+the configured Sonarr, Radarr, Prowlarr, and SABnzbd media-automation group.
+The repo-owned adapters provide structured Servarr console output and explicit
+SABnzbd console output while retaining the applications' file logs, so image
+vendoring is not a prerequisite for this transport path.
 
 Caddy access logs remain a separate policy and volume decision from Caddy
 runtime logs. Host Mullvad and WireGuard logs are a separate host-networking
@@ -167,6 +173,10 @@ for spec in \
   '_nas_immichmachinelearning 51160 immich-machine-learning.service' \
   '_nas_jellyfin 51120 jellyfin.service' \
   '_nas_jellyfinmetrics 51260 jellyfin-exporter.service' \
+  '_nas_sonarr 51410 sonarr.service' \
+  '_nas_radarr 51420 radarr.service' \
+  '_nas_prowlarr 51430 prowlarr.service' \
+  '_nas_sabnzbd 51440 sabnzbd.service' \
   '_nas_victorialogs 51270 victoria-logs.service'; do
   read -r user uid unit <<<"${spec}"
   printf '\n== %s (%s) ==\n' "${unit}" "${uid}"
@@ -215,7 +225,7 @@ printf '\n== VictoriaLogs count-only checks (last 24h) ==\n'
 for service in \
   caddy victoria-metrics garage vmalert blackbox-exporter alertmanager grafana \
   immich-server immich-database immich-valkey immich-machine-learning \
-  jellyfin jellyfin-exporter; do
+  jellyfin jellyfin-exporter sonarr radarr prowlarr sabnzbd; do
   curl -fsSG http://127.0.0.1:9428/select/logsql/query \
     --data-urlencode "query=_stream:{host=\"nas\",service=\"${service}\"} | stats count()" \
     --data-urlencode 'start=now-24h' \

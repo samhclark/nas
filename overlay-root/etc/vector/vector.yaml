@@ -90,6 +90,38 @@ sources:
     current_boot_only: false
     since_now: false
 
+  prowlarr_journald:
+    type: journald
+    include_matches:
+      _UID:
+        - "51430"
+    current_boot_only: false
+    since_now: false
+
+  radarr_journald:
+    type: journald
+    include_matches:
+      _UID:
+        - "51420"
+    current_boot_only: false
+    since_now: false
+
+  sabnzbd_journald:
+    type: journald
+    include_matches:
+      _UID:
+        - "51440"
+    current_boot_only: false
+    since_now: false
+
+  sonarr_journald:
+    type: journald
+    include_matches:
+      _UID:
+        - "51410"
+    current_boot_only: false
+    since_now: false
+
   victoria_metrics_journald:
     type: journald
     include_matches:
@@ -195,6 +227,38 @@ transforms:
       .host = "nas"
       .service = "jellyfin-exporter"
 
+  prowlarr:
+    type: remap
+    inputs:
+      - prowlarr_journald
+    source: |
+      .host = "nas"
+      .service = "prowlarr"
+
+  radarr:
+    type: remap
+    inputs:
+      - radarr_journald
+    source: |
+      .host = "nas"
+      .service = "radarr"
+
+  sabnzbd:
+    type: remap
+    inputs:
+      - sabnzbd_journald
+    source: |
+      .host = "nas"
+      .service = "sabnzbd"
+
+  sonarr:
+    type: remap
+    inputs:
+      - sonarr_journald
+    source: |
+      .host = "nas"
+      .service = "sonarr"
+
   victoria_metrics:
     type: remap
     inputs:
@@ -226,6 +290,10 @@ sinks:
       - immich_valkey
       - jellyfin
       - jellyfin_exporter
+      - prowlarr
+      - radarr
+      - sabnzbd
+      - sonarr
       - victoria_metrics
       - vmalert
     uri: http://127.0.0.1:9428/insert/jsonline?_stream_fields=host,service&_msg_field=message&_time_field=timestamp

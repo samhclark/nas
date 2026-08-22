@@ -21,6 +21,7 @@ mapped-group = "media"
 
 [container]
 image = "lscr.io/linuxserver/sabnzbd:5.1.0-ls266@sha256:b0f9755d795913bd26ae3f3a12805668ab0681ab847a7624568559c573fc7cae"
+log-driver = "journald"
 network = "host"
 container-user = 1000
 entrypoint = "/usr/share/nas/sabnzbd/sabnzbd-entrypoint.sh"

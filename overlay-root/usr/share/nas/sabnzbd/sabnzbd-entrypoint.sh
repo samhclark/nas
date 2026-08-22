@@ -31,7 +31,7 @@ case "${effective_uid}" in
         python3 /usr/share/nas/sabnzbd/ensure-host-whitelist.py \
             /config/sabnzbd.ini
         exec python3 /app/sabnzbd/SABnzbd.py --config-file /config \
-            --server "${family}" "$@"
+            --server "${family}" --console "$@"
         ;;
     *)
         printf '%s\n' \

@@ -61,12 +61,13 @@ architecture or operating instructions.
    configured expansion and must wait for that evidence before deployment.
    Jellyfin runtime logging is also configured behind both earlier gates while
    preserving its local application and transcode diagnostics. The
-   media-automation services follow. Generate Vector's UID sources from the
-   typed Quadlet declarations so collection membership cannot drift from
-   service identity. Coordinate the
-   media-automation group with optional image vendoring where owning
-   entrypoints or console behavior would materially improve testing. Caddy
-   access logs and host
+   Sonarr, Radarr, Prowlarr, and SABnzbd logging group is configured behind all
+   three earlier gates. Their repo-owned adapters select structured Servarr
+   output and explicit SABnzbd console output without disabling application
+   file logs, so vendoring is not needed for this migration. Generate Vector's
+   UID sources from the typed Quadlet declarations so collection membership
+   cannot drift from service identity.
+   Caddy access logs and host
    Mullvad/WireGuard logs remain separate projects. See
    `docs/operations/logging.md`.
 5. **Documentation maintenance.** Keep README focused on operators and

@@ -73,6 +73,10 @@ class CompilerCharacterizationTests(unittest.TestCase):
             "immich-valkey",
             "jellyfin",
             "jellyfin-exporter",
+            "prowlarr",
+            "radarr",
+            "sabnzbd",
+            "sonarr",
             "victoria-metrics",
             "vmalert",
         }

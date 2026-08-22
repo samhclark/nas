@@ -6,6 +6,7 @@ Documentation=https://radarr.video/
 [Container]
 ContainerName=radarr
 Image=lscr.io/linuxserver/radarr:6.3.0.10514-ls313@sha256:a45b5ab0f850f39edb4cc9c95bbd967b52ddc3d4574a4dfb45561177db6c88f4
+LogDriver=journald
 Entrypoint=/usr/share/nas/radarr/radarr-entrypoint.sh
 PodmanArgs=--runtime=krun
 Annotation=krun.cpus=2
@@ -44,6 +45,7 @@ DropCapability=NET_RAW
 
 Environment=TZ=America/Chicago
 Environment=TMPDIR=/tmp
+Environment=RADARR__LOG__CONSOLEFORMAT=Clef
 
 # Image-controlled libkrun entrypoint adapter (read-only)
 Volume=/usr/share/nas/radarr:/usr/share/nas/radarr:ro

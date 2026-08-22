@@ -21,6 +21,7 @@ mapped-group = "media"
 
 [container]
 image = "lscr.io/linuxserver/radarr:6.3.0.10514-ls313@sha256:a45b5ab0f850f39edb4cc9c95bbd967b52ddc3d4574a4dfb45561177db6c88f4"
+log-driver = "journald"
 network = "host"
 container-user = 1000
 entrypoint = "/usr/share/nas/radarr/radarr-entrypoint.sh"
@@ -32,6 +33,9 @@ dns = ["100.100.100.100"]
 [container.environment]
 TZ = "America/Chicago"
 TMPDIR = "/tmp"
+# Servarr's CLEF console layout is JSONL; the application file logs remain
+# enabled for its web UI and detailed diagnostics.
+RADARR__LOG__CONSOLEFORMAT = "Clef"
 
 [[container.volumes]]
 comment = "Image-controlled libkrun entrypoint adapter (read-only)"

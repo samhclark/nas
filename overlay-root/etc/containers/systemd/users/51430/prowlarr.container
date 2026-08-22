@@ -6,6 +6,7 @@ Documentation=https://prowlarr.com/
 [Container]
 ContainerName=prowlarr
 Image=lscr.io/linuxserver/prowlarr:2.5.2.5491-ls156@sha256:1295cff29d10b486c0d8324d1559a552140a5932bf8b3d87e398654414f63f92
+LogDriver=journald
 Entrypoint=/usr/share/nas/prowlarr/prowlarr-entrypoint.sh
 PodmanArgs=--runtime=krun
 Annotation=krun.cpus=1
@@ -43,6 +44,7 @@ DropCapability=NET_RAW
 
 Environment=TZ=America/Chicago
 Environment=TMPDIR=/tmp
+Environment=PROWLARR__LOG__CONSOLEFORMAT=Clef
 
 # Image-controlled libkrun entrypoint adapter (read-only)
 Volume=/usr/share/nas/prowlarr:/usr/share/nas/prowlarr:ro

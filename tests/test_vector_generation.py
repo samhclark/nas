@@ -47,6 +47,10 @@ class VectorGenerationTests(unittest.TestCase):
             "immich-valkey": 51150,
             "jellyfin": 51120,
             "jellyfin-exporter": 51260,
+            "prowlarr": 51430,
+            "radarr": 51420,
+            "sabnzbd": 51440,
+            "sonarr": 51410,
             "victoria-metrics": 51250,
             "vmalert": 51220,
         }
