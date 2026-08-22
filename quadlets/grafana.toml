@@ -39,7 +39,7 @@ GF_SERVER_HTTP_ADDR = "0.0.0.0"
 GF_SERVER_HTTP_PORT = "3000"
 GF_AUTH_ANONYMOUS_ENABLED = "true"
 GF_AUTH_ANONYMOUS_ORG_ROLE = "Admin"
-GF_AUTH_DISABLE_LOGIN_FORM = "true"
+GF_AUTH_DISABLE_LOGIN_FORM = "false"
 # Keep the container's stdout as the sole Grafana log sink and preserve a
 # structured JSON message without maintaining a duplicate file-log copy.
 GF_LOG_MODE = "console"
