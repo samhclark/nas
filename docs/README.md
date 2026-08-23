@@ -20,7 +20,8 @@ here rather than reading rollout plans or evidence logs.
 
 - [`development/rootless-quadlets.md`](development/rootless-quadlets.md) — add or
   change a generated rootless service
-- [`roadmap.md`](roadmap.md) — current work and settled invariants
+- [`roadmap.md`](roadmap.md) — prioritized backlog, revisit triggers, and
+  settled invariants
 - [`operations/jellyfin-monitoring.md`](operations/jellyfin-monitoring.md) —
   playback monitoring setup and interpretation
 - [`operations/immich.md`](operations/immich.md) — production topology,

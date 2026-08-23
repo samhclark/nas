@@ -74,12 +74,14 @@ not claimed yet because no fresh QCOW2 was available during implementation.
 `make check` validates the test Ignition; actually booting the VM is not part of
 `make check`, `make test`, `make build`, `make all`, or CI.
 
-Automatic OCI-to-QCOW2 conversion is deliberately deferred. The supported
-unified `image-builder` was not installed during the local capability spike,
-and its current local-image transport addresses the rootful container store
-directly. Bridging the rootless development image into that store would require
-a privileged mount-and-cleanup workflow that is a worse safety boundary than
-requiring an explicit QCOW2 input. The older `bootc-image-builder` path is
+Automatic OCI-to-QCOW2 conversion is deliberately outside the current runner.
+`bcvk` 0.18.0 is now installed on the development host and provides both
+`to-disk --format=qcow2` and direct ephemeral boot with Ignition injection.
+The first integration task is to use its to-disk path to supply a fresh image
+to the existing runner, then compare its ephemeral path with the runner's
+isolation and assertion contract. Do not add automatic conversion or replace
+the runner until that end-to-end evidence exists; track this as R6 in the
+[`roadmap`](../roadmap.md). The older `bootc-image-builder` path is
 [deprecated upstream](https://osbuild.org/docs/bootc/deprecation-notice/).
 
 A scratch ZFS-pool acceptance VM is deliberately deferred. No pool fixture or
