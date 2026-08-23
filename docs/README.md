@@ -28,8 +28,8 @@ here rather than reading rollout plans or evidence logs.
 - [`operations/logging.md`](operations/logging.md) — host journald, Vector,
   VictoriaLogs pilot, and staged operator validation
 - [`operations/media-automation.md`](operations/media-automation.md) — the
-  authored Sonarr, Radarr, Prowlarr, and SABnzbd design, initial configuration,
-  and the staged operator migration runbook
+  deployed Sonarr, Radarr, Prowlarr, and SABnzbd topology, configuration, and
+  operator runbook
 - [`investigations/jellyfin-hardware-transcoding.md`](investigations/jellyfin-hardware-transcoding.md)
   — the one active investigation
 

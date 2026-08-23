@@ -43,8 +43,8 @@ configuration and production evidence: enabling useful console output,
 confirming the expected records, and exercising outage, restart, and reboot
 recovery one application group at a time.
 
-The first expansion group is configured in the image and awaits its staged
-production validation:
+The first logging expansion group is configured in the image and awaits its
+staged production validation:
 
 - Garage
 - vmalert
@@ -65,7 +65,8 @@ The third expansion group is configured behind both earlier production gates:
 
 - Jellyfin runtime logs
 
-The final planned runtime group is configured behind all three earlier gates:
+The four media-automation services are already deployed and operational. Their
+runtime logging group is configured behind all three earlier logging gates:
 
 - Sonarr
 - Radarr
@@ -86,13 +87,14 @@ other fleet artifacts. This prevents
 the collector's UID selectors from becoming a separately maintained list and
 makes omissions or mismatched host identities fail during repository checks.
 
-After Group 1, deploy and validate the configured Immich group, followed by the
-configured Jellyfin runtime group. Keep Jellyfin's local file and transcode
-diagnostics in place; journald collection supplements those files. Then deploy
-the configured Sonarr, Radarr, Prowlarr, and SABnzbd media-automation group.
-The repo-owned adapters provide structured Servarr console output and explicit
-SABnzbd console output while retaining the applications' file logs, so image
-vendoring is not a prerequisite for this transport path.
+After Group 1, validate the configured Immich logging group, followed by the
+configured Jellyfin runtime logging group. Keep Jellyfin's local file and
+transcode diagnostics in place; journald collection supplements those files.
+Then validate the configured Sonarr, Radarr, Prowlarr, and SABnzbd logging group
+against the already-deployed services. The repo-owned adapters provide
+structured Servarr console output and explicit SABnzbd console output while
+retaining the applications' file logs, so image vendoring is not a prerequisite
+for this transport path.
 
 Caddy access logs remain a separate policy and volume decision from Caddy
 runtime logs. Host Mullvad and WireGuard logs are a separate host-networking

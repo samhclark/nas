@@ -7,7 +7,6 @@ This file provides guidance to AI coding agents when working with code in this r
 This repository creates a NAS container image with ZFS, Tailscale, and encrypted storage support. The project has been **successfully overhauled** from a build-from-source approach to using prebuilt ZFS kernel modules with full CI/CD automation.
 
 **Status**: In production for one personal NAS
-**Build Time**: ~2-3 minutes (down from 10+ minutes)
 **Container Registry**: `ghcr.io/samhclark/nas/bootc:stable`
 **Ignition File**: `https://samhclark.github.io/nas/ignition.json`
 
@@ -52,10 +51,9 @@ These are considered active and in use on the real machine unless explicitly sta
 - `alertmanager.container` - notification fanout; rootless under `etc/containers/systemd/users/51240/`, deployed and validated on the NAS
 - `grafana.container` - dashboards; rootless under `etc/containers/systemd/users/51210/`
 
-### Configured, Awaiting Production Validation
+### Active media-automation Quadlets
 
-These Quadlets are image-defined but must not be described as deployed until
-their service-specific NAS validation is complete:
+These four services are deployed and validated in production:
 - `sonarr.container` - TV-library automation; rootless under `etc/containers/systemd/users/51410/`
 - `radarr.container` - movie-library automation; rootless under `etc/containers/systemd/users/51420/`
 - `prowlarr.container` - indexer management; rootless under `etc/containers/systemd/users/51430/`
@@ -145,7 +143,7 @@ publish or deployment step by default.
 - `make generate-ignition` - Generate Ignition JSON from butane.yaml
 
 ### CI/CD Integration
-- `make run-workflow` - Trigger main build workflow
+- `make publish` - Trigger the main image publishing workflow
 - `make run-pages` - Trigger Ignition file generation and GitHub Pages deployment
 - `make run-cleanup` - Trigger container cleanup (dry run)
 - `make run-cleanup-force` - Trigger container cleanup (actual deletion)
@@ -164,102 +162,32 @@ publish or deployment step by default.
 - These are independent — the Ignition file and the container image are separate artifacts with separate CI workflows.
 - `bootc container lint` warnings about `/var` cache artifacts are currently expected and can be ignored for now. Warnings about `/var/usrlocal` usually mean something was copied into `/usr/local` before this image's overlay replaced Fedora CoreOS's default `/usr/local -> ../var/usrlocal` symlink.
 
-## Architecture (Production)
+## Build, release, and configuration boundaries
 
-**4-stage build process** consuming prebuilt ZFS RPMs:
+The six-stage `Containerfile` builds patched crun, imports verified SOPS and
+Vector assets, pulls the matching prebuilt ZFS RPM image, and assembles the
+Fedora CoreOS image. It is authoritative for package and unit enablement.
 
-### Stage 1: Build Patched crun
+ZFS/kernel compatibility is registry-based: an image named
+`ghcr.io/samhclark/fedora-zfs-kmods:zfs-X.X.X_kernel-Y.Y.Y` must exist or the
+build fails early. Image labels record the selected ZFS and kernel versions.
 
-Build the pinned crun release with the repo's narrow `krun.tap_name` patch.
+The main build runs daily and manually through `make publish`; Pages renders
+Ignition from `butane.yaml`; cleanup runs weekly and defaults manual runs to a
+dry-run. CI validates generated artifacts, SOPS, versions, signatures, and the
+image before publication.
 
-### Stage 2: Import SOPS
+Keep the configuration boundary explicit:
 
-Copy the pinned SOPS binary from the upstream image whose signature CI
-verifies.
-
-### Stage 3: Pull Prebuilt ZFS Kernel Modules
-```dockerfile
-FROM ghcr.io/samhclark/fedora-zfs-kmods:zfs-${ZFS_VERSION}_kernel-${KERNEL_VERSION} as zfs-rpms
-```
-
-### Stage 4: Final Image Assembly
-
-Starts `FROM quay.io/fedora/fedora-coreos:stable`, validates that the
-provided `KERNEL_VERSION` matches the base image's actual kernel, then installs
-the host packages (nftables, systemd-networkd, node-exporter, smartmontools,
-tailscale, jq) plus the ZFS RPMs from stage 3, runs
-`depmod`, and enables the systemd units. See the `Containerfile` itself for
-the authoritative package and unit lists — do not duplicate them here.
-
-## CI/CD Workflows
-
-### Main Build (`.github/workflows/build.yaml`)
-- **Trigger**: Daily at 9:18 AM UTC + manual
-- **Jobs**: repository validation, SOPS verification, and version resolution → build
-- **Output**: `ghcr.io/samhclark/nas/bootc:stable`
-- **Features**: Version discovery, compatibility checking, build attestations
-
-### Ignition Files (`.github/workflows/pages.yaml`)
-- **Trigger**: Push to main (Butane config, Makefile generation logic, or Pages template changes) + manual
-- **Output**: `https://samhclark.github.io/nas/ignition.json`
-- **Features**: Butane→Ignition conversion, GitHub Pages deployment
-
-### Container Cleanup (`.github/workflows/cleanup-images.yaml`)
-- **Trigger**: Weekly Sundays 2 AM UTC + manual
-- **Retention**: 90 days
-- **Targets**: Both the current `nas/bootc` package and legacy `custom-coreos` versions
-- **Safety**: Manual triggers default to dry-run
-
-## Configuration Strategy
-
-**This is a bootc-centric NAS system requiring careful separation of configuration approaches.**
-
-### Containerfile Configuration (System Capabilities)
-Use the `Containerfile` for configuration that adds **capabilities** to the system:
-- **Security**: Sigstore verification for container pulls via `/etc/containers/policy.json` (used by bootc)
-- **System Services**: NTP configuration, chronyd settings
-- **Package Installation**: ZFS modules, nftables, systemd-networkd, Tailscale
-- **Service Enablement**: systemd units (timers, tailscaled)
-
-### Butane Configuration (Personal & Runtime)
-Use `butane.yaml` for configuration that is **personal** or **cannot be described declaratively**:
-- **Personal Settings**: SSH authorized keys, user password hash, hostname
-- **Runtime Configuration**: LUKS encryption with TPM2 unlock
-- **Dynamic Filesystem**: Encrypted btrfs mounting, partition layouts
-- **Boot-time Decisions**: Anything requiring runtime system state
-
-### Current Configuration (`butane.yaml`)
-- **Encryption**: LUKS root filesystem with TPM2 unlock, without PCR binding
-- **Filesystem**: Btrfs on `/dev/mapper/root`
-- **Access**: SSH key and password hash for 'core' user
-- **Identity**: Hostname set to 'nas'
-
-### Installation URL
-```
-https://samhclark.github.io/nas/ignition.json
-```
-
-Use this URL during Fedora CoreOS installation to configure encrypted storage, SSH access, and system settings.
-
-## Version Compatibility Strategy
-
-**Registry-Based Compatibility**: No manual compatibility matrix maintenance.
-
-- ✅ **If exists**: `ghcr.io/samhclark/fedora-zfs-kmods:zfs-X.X.X_kernel-Y.Y.Y` → Compatible
-- ❌ **If missing**: Build fails early with clear error pointing to fedora-zfs-kmods project
-
-This eliminates duplicate compatibility tracking and provides automatic compatibility validation.
-
-## Container Labels
-
-Images include labels for future deduplication:
-- `nas.bootc.zfs-version` - ZFS version used
-- `nas.bootc.kernel-version` - Kernel version used
+- `Containerfile` and `overlay-root/` add immutable system capabilities,
+  packages, policy, units, and image-managed assets.
+- `butane.yaml` contains host identity and install-time LUKS/Btrfs setup.
+- Runtime state belongs under `/var`; static assets belong under `/usr/share/nas`.
 
 ## Key Files
 
 ### Core Files
-- `Containerfile` - 4-stage build definition
+- `Containerfile` - six-stage build definition
 - `butane.yaml` - Fedora CoreOS configuration with host identity + storage
 - `Makefile` - Development commands (`make help` to see all targets)
 - `ignition.json` - Locally generated, gitignored Ignition output
@@ -284,13 +212,6 @@ Images include labels for future deduplication:
 - `docs/development/rootless-quadlets.md` - Repo-specific pattern for migrating and creating rootless Quadlets
 - `docs/operations/jellyfin-monitoring.md` - API-key bootstrap, privacy contract, and interpretation guidance for the Jellyfin playback dashboard
 - `docs/investigations/jellyfin-hardware-transcoding.md` - Current evidence and decision log for preserving a VM boundary while pursuing Intel hardware transcoding
-- `vendored-docs/podman-systemd.unit.5.md` - Vendored Quadlet reference, useful for rootless/systemd placement questions
-
-## Development Patterns
-
-**Registry-First Compatibility**: Let the container registry be the source of truth for ZFS+kernel compatibility rather than maintaining duplicate matrices.
-
-**Local-First CI/CD Development**: Implement workflow logic in Makefile targets and `scripts/` first, then reference those scripts from GitHub Actions for consistency.
 
 ## bootc Primer (Tips)
 
@@ -308,19 +229,18 @@ Images include labels for future deduplication:
 - Use category buckets inside that range: `511xx` for storage, `512xx` for observability, `513xx` for ingress/edge
 - Current storage/application allocation: `_nas_garage` uses host UID/GID `51110`; `_nas_jellyfin` uses `51120`; `_nas_immichserver` uses `51130`; `_nas_immichdatabase` uses `51140`; `_nas_immichvalkey` uses `51150`; `_nas_immichmachinelearning` uses `51160`
 - Current observability/edge allocation: `_nas_grafana` uses `51210`; `_nas_vmalert` uses `51220`; `_nas_blackbox` uses `51230`; `_nas_alertmanager` uses `51240`; `_nas_victoriametrics` uses `51250`; `_nas_jellyfinmetrics` uses `51260`; `_nas_victorialogs` uses `51270`; `_nas_caddy` uses `51310`
-- Current media-automation allocation: `_nas_sonarr` uses `51410`; `_nas_radarr` uses `51420`; `_nas_prowlarr` uses `51430`; `_nas_sabnzbd` uses `51440`. These identities are configured but not production-validated yet.
+- Current media-automation allocation: `_nas_sonarr` uses `51410`; `_nas_radarr` uses `51420`; `_nas_prowlarr` uses `51430`; `_nas_sabnzbd` uses `51440`. All four services are deployed and validated in production.
 - Subordinate ID ranges are a separate allocator, but keep them globally non-overlapping; the current convention is to derive a `65536`-wide range from the host UID for readability, e.g. `_nas_grafana:512100000:65536`
 - UIDs are allocate-only: never reuse a UID from a retired service. File ownership is numeric and outlives the user — ZFS snapshots in particular can hand a retired UID's files to whatever service reuses it. `quadlets/*.toml` is the registry of active allocations; when the first service is actually retired, record its UID here as retired and add a `retired-uids` check to `generate-quadlets.py`.
 
 ## Rootless Quadlet Note
 
 Current state:
-- Fourteen image-defined services are deployed as rootless admin-managed user Quadlets: the existing ingress, observability (including VictoriaLogs), Garage, and Jellyfin services plus the four-component Immich application. Four media-automation services are configured but await their production validation. Immich first use and a clean post-fix reboot are validated; the earlier reboot exposed and motivated the mapped-ownership storage-readiness fix. Jellyfin's service path is operational, while representative playback and VM-isolated hardware transcoding remain active validation work.
+- Eighteen image-defined services are deployed as rootless admin-managed user Quadlets: ingress, observability (including VictoriaLogs), Garage, Jellyfin, the four-component Immich application, and the four media-automation services. Immich first use and a clean post-fix reboot are validated; the earlier reboot exposed and motivated the mapped-ownership storage-readiness fix. Jellyfin's service path is operational, while representative playback and VM-isolated hardware transcoding remain active validation work.
 - All eighteen configured services run under libkrun with explicit CPU and RAM annotations, `StopSignal=SIGINT`, and one root-managed routed TAP per microVM
 - Rootless-service files are **generated**: edit `quadlets/<service>.toml`, run `make generate-quadlets`, and commit both. Each service declares an application, a unique role within that application, named endpoints with allowed consumers, and any bounded startup dependencies. Never hand-edit files with a `GENERATED` header — CI (`build-preflight.yaml` job `verify-repository`) fails on drift. The generated account-unit, storage-unit, secret, asset, and active-TAP manifests drive non-Python consumers; adding a service does not require a manual Containerfile enablement line. Add encrypted values to `overlay-root/usr/share/nas/secrets/secrets.sops.yaml` for declared secrets.
 
 Useful reference points for future rootless work:
-- The vendored `podman-systemd.unit.5.md` in this repo documents the rootless admin-managed Quadlet search paths under `/etc/containers/systemd/users/$(UID)` and `/etc/containers/systemd/users/`
 - In practice, placing a user Quadlet under `/usr/share/containers/systemd/users/${UID}/` caused Fedora 43 with Podman 5.8.1 to generate a system unit in `system.slice`, because that path is still underneath the rootful `/usr/share/containers/systemd/` tree. Use `/etc/containers/systemd/users/${UID}/` for rootless service users in this repo.
 - `sysusers.d` configuration belongs in `/usr/lib/sysusers.d` for packaged/vendor config; it is not a `/var` payload
 - Rootless Podman expects subordinate ID ranges. This repo ships explicit ranges for every `_nas_*` service user in `/etc/subuid` and `/etc/subgid`
@@ -348,19 +268,6 @@ Useful reference points for future rootless work:
 - Ordinary rootless crun with direct `/dev/dri/renderD128` proved that the host, Jellyfin image, permissions, and Intel media stack can expose VA-API codecs, but it is not an acceptable production fallback for this deployment because it removes the required VM boundary around Jellyfin and its plugins.
 - For rootless Grafana, SELinux access is intended to come from persistent `semanage fcontext` rules plus `restorecon`, not from `SecurityLabelDisable=true`
 
-## Build Performance
-
-- **Previous**: 10+ minutes (ZFS compilation from source)
-- **Current**: 2-3 minutes (prebuilt RPM consumption)
-- **Improvement**: 70%+ reduction in build time
-
-## Security Features
-
-- **Encryption**: LUKS root filesystem with TPM2-based unlock, without PCR binding
-- **Build Security**: Container image signing and attestations
-- **Access Control**: SSH key-based authentication
-- **Tailscale**: Daemon enabled (auth/config via runtime)
-
 ### Threat Model
 
 This is a single-admin homelab NAS. The primary threats are:
@@ -382,13 +289,6 @@ SELinux runs in enforcing mode (Fedora default). The main value for containers i
 #### ZFS snapshots and SELinux
 
 SELinux labels are stored as xattrs on files. ZFS snapshots capture xattrs. Rolling back a snapshot restores old labels, which may not match the current policy. After any ZFS rollback, run `restorecon -F -R` on the affected mountpoints to reapply the `semanage fcontext` policy (the `-F` ensures the full context including MCS range is reset). The policy itself lives in the SELinux policy store on the root filesystem, not on the ZFS dataset, so it survives rollbacks. Same applies to `zfs send/receive` — the receiving machine needs its own `semanage fcontext` rules.
-
-## Quick Start
-
-- **Build the container image**: `make build`
-- **Update the Ignition file** (after editing `butane.yaml`): `make generate-ignition`
-- **Trigger CI build**: `make run-workflow`
-- **Install Fedora CoreOS**: Use `https://samhclark.github.io/nas/ignition.json`
 
 ## Troubleshooting
 

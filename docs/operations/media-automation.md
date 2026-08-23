@@ -10,13 +10,13 @@ This document describes the authored first Arr-stack slice:
 - SABnzbd for Usenet downloads; and
 - the existing Jellyfin media server.
 
-The four new services are rootless LSIO containers adapted for this host's
-libkrun execution boundary. Each has a dedicated TAP guest and a separate
-managed config dataset. Sonarr, Radarr, Prowlarr, and SABnzbd are all selected
-for Mullvad egress. The design is not deployed or validated on the NAS yet.
-Do not interpret generated units, local tests, or this runbook as evidence that
-the services are running, that the WireGuard handshake succeeds, or that a
-download has completed.
+The four services are rootless LSIO containers adapted for this host's libkrun
+execution boundary. Each has a dedicated TAP guest and a separate managed
+config dataset. Sonarr, Radarr, Prowlarr, and SABnzbd are deployed and
+operational on the NAS, and all are selected for Mullvad egress. This runbook
+describes their current topology and configuration; it is not a substitute for
+checking live service health, a successful WireGuard handshake, or a completed
+download when performing an operational change.
 
 ## Runtime shape
 
@@ -48,11 +48,11 @@ use the `*.krun` endpoints below so it stays on the declared inter-TAP edges.
 ## DNS and egress boundary
 
 `wg-arr` is a root-managed host WireGuard interface generated from the typed
-`[egress.mullvad]` declaration in `quadlets/_fleet.toml`. The peer endpoint is
-the authored Mullvad multihop endpoint from `ussj002-nlam006.conf`; the private
-key comes from the encrypted SOPS key `mullvad-private-key` and is loaded into
-systemd-networkd with a systemd credential. The redacted `.conf` is a design
-reference, not a second runtime configuration source.
+`[egress.mullvad]` declaration in `quadlets/_fleet.toml`. That declaration is
+the sole authored source for the Mullvad multihop endpoint. The private key
+comes from the encrypted SOPS key `mullvad-private-key` and is loaded into
+systemd-networkd with a systemd credential. Generated networkd files are
+runtime artifacts, not a second configuration source.
 
 The selected services use `wg-arr` for non-DNS Internet traffic. Their only
 DNS server is Tailscale MagicDNS at `100.100.100.100`. The Tailnet is

@@ -55,10 +55,11 @@ to the credential rather than containing private key material.
 This is a host-network secret, not a container secret. The Arr containers do
 not receive the Mullvad private key and cannot configure `wg-arr`. Their
 selected egress is authorized only after the host WireGuard interface and its
-generated nftables policy are ready. The initial deployment is not validated;
-in particular, the repository does not yet claim that networkd successfully
-loaded the credential, that Mullvad completed a handshake, or that a guest's
-public traffic reached the provider.
+generated nftables policy are ready. The media-automation services are deployed
+and operational. This secret contract does not itself claim that networkd
+successfully loaded the credential, that Mullvad completed a handshake, or that
+a guest's public traffic reached the provider; those remain separate egress
+checks.
 
 ## Why runtime files instead of rootless Podman secrets
 

@@ -136,8 +136,8 @@ The current authored stateful services are Caddy, Alertmanager, Grafana,
 Garage, VictoriaMetrics, VictoriaLogs, Jellyfin, all four Immich components,
 and the four media-automation services. VictoriaLogs storage is deployed and
 validated through the initial logging pilot. The media-automation config
-datasets and shared layout are authored, but their NAS deployment and
-validation remain incomplete. `tank/victoria-logs/data` deliberately has no
-snapshot or backup policy.
+datasets and shared layout are deployed and validated with the four production
+services. `tank/victoria-logs/data` deliberately has no snapshot or backup
+policy.
 Blackbox exporter, vmalert, and Jellyfin exporter are intentionally stateless;
 image assets and runtime secrets are separate declaration classes.

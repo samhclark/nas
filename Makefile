@@ -218,9 +218,6 @@ publish: ## Trigger the production image publishing workflow
 	@$(GH) workflow run build.yaml
 	@printf "$(COLOR_GREEN)Triggered build.yaml$(COLOR_RESET)\n"
 
-.PHONY: run-workflow
-run-workflow: publish ## Compatibility alias for publish
-
 .PHONY: run-pages
 run-pages: ## Trigger Ignition file generation and GitHub Pages deployment
 	@$(GH) workflow run pages.yaml

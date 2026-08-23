@@ -548,7 +548,7 @@ must not turn this successful probe into an implicit production migration.
 - [Fedora 44 libkrun build configuration](https://src.fedoraproject.org/rpms/libkrun/raw/f44/f/libkrun.spec)
 - [Fedora 44 virglrenderer build configuration](https://src.fedoraproject.org/rpms/virglrenderer/raw/f44/f/virglrenderer.spec)
 - [smolvm GPU requirements and Venus example](https://github.com/smol-machines/smolvm#known-limitations)
-- [Vendored Quadlet `AddDevice=` reference](../../vendored-docs/podman-systemd.unit.5.md#adddevice)
+- [Podman 5.8.1 Quadlet `AddDevice=` reference](https://docs.podman.io/en/v5.8.1/markdown/podman-systemd.unit.5.html#adddevice)
 
 ## Session Log
 
