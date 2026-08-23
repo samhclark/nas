@@ -14,7 +14,7 @@ modinfo -k "${expected_kernel}" zfs >/dev/null
 bootc container lint
 [[ -d /usr/local && ! -L /usr/local ]]
 [[ "$(readlink /usr/bin/krun)" == "crun" ]]
-/usr/bin/crun --version | grep -Fq 'crun version 1.28'
+/usr/bin/crun --version | grep -Fq 'crun version 1.29.1'
 grep -aFq 'krun.tap_name' /usr/bin/crun
 /usr/local/bin/sops --version | grep -Fq 'sops 3.13.3'
 /usr/local/bin/vector --version | grep -Fq 'vector 0.57.0'

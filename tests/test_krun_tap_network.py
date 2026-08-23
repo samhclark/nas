@@ -413,15 +413,38 @@ exit 1
         self.assertIn("krun.tap_name and krun.use_passt are mutually exclusive", PATCH)
 
     def test_crun_source_is_verified_before_extraction(self):
-        checksum = (
-            "62b82f7db89df3652970d9ad76f635a177d09bcb543c8d1dae13a749cd3e6e35"
+        archives = (
+            (
+                "https://github.com/containers/crun/archive/refs/tags/1.29.1.tar.gz",
+                "ac6017a905eb21ba76389ed7327e8f7d6ca55a7c20c69e6c71fb450d4e358c77",
+                "crun-1.29.1.tar.gz",
+            ),
+            (
+                "https://github.com/containers/libocispec/archive/872b8b0b7ccb1a121601ede0dcac8c6b8a1008a6.tar.gz",
+                "9cb0bcd43e25784b44f113045251cf09c291b912c0b862bd505be1a9027c0825",
+                "libocispec-872b8b0b7ccb1a121601ede0dcac8c6b8a1008a6.tar.gz",
+            ),
+            (
+                "https://github.com/opencontainers/runtime-spec/archive/d64c1d945da7cf6970061c7c9ff4391fafdf2a15.tar.gz",
+                "1698ebaa7ff07f8409c084fe9539d0391820e71b7a6e6d877aa1ce8b383a4b50",
+                "runtime-spec-d64c1d945da7cf6970061c7c9ff4391fafdf2a15.tar.gz",
+            ),
+            (
+                "https://github.com/opencontainers/image-spec/archive/26647a49f642c7d22a1cd3aa0a48e4650a542269.tar.gz",
+                "8668357de6a1162220b2d1fb654a4182a55844b90ad2774c3b99640eec7e2f54",
+                "image-spec-26647a49f642c7d22a1cd3aa0a48e4650a542269.tar.gz",
+            ),
         )
-        self.assertIn(f'{checksum}  /tmp/crun-1.28.tar.zst', CONTAINERFILE)
+        for url, checksum, filename in archives:
+            self.assertIn(url, CONTAINERFILE)
+            self.assertIn(f"{checksum}  /tmp/{filename}", CONTAINERFILE)
+
+        self.assertIn("tar --extract --gzip --file /tmp/crun-1.29.1.tar.gz", CONTAINERFILE)
         self.assertIn("sha256sum --check --strict", CONTAINERFILE)
         self.assertNotIn("ADD --checksum", CONTAINERFILE)
         self.assertLess(
             CONTAINERFILE.index("sha256sum --check --strict"),
-            CONTAINERFILE.index("tar --extract --zstd"),
+            CONTAINERFILE.index("tar --extract --gzip"),
         )
 
 
