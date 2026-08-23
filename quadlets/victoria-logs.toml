@@ -32,7 +32,7 @@ probe-endpoint = "http"
 name = "http"
 port = 9428
 host = "127.0.0.1:9428"
-consumers = ["grafana", "victoria-metrics"]
+consumers = ["caddy", "grafana", "victoria-metrics"]
 
 [[storage]]
 name = "data"
