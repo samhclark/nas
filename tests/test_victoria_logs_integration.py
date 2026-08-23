@@ -51,7 +51,7 @@ class VictoriaLogsIntegrationTests(unittest.TestCase):
         endpoint = service.endpoints_by_name["http"]
         self.assertEqual(endpoint.port, 9428)
         self.assertEqual(endpoint.publication, "127.0.0.1:9428")
-        self.assertEqual(endpoint.consumers, ("grafana", "victoria-metrics"))
+        self.assertEqual(endpoint.consumers, ("caddy", "grafana", "victoria-metrics"))
         storage = service.storage[0]
         self.assertEqual(storage.dataset, "tank/victoria-logs/data")
         self.assertEqual(storage.host_path, "/var/lib/victoria-logs")
@@ -122,10 +122,6 @@ class VictoriaLogsIntegrationTests(unittest.TestCase):
         self.assertIn(
             'iifname "krun-51250" oifname "krun-51270" '
             "ip saddr 10.253.7.2 ip daddr 10.253.18.2 tcp dport { 9428 } accept",
-            firewall,
-        )
-        self.assertNotIn(
-            'iifname "krun-51310" oifname "krun-51270"',
             firewall,
         )
         self.assertIn(
