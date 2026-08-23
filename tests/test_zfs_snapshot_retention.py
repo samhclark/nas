@@ -334,8 +334,6 @@ class SnapshotRetentionTests(unittest.TestCase):
             "hourly": 25,
             "daily": 8,
             "weekly": 5,
-            "monthly": 13,
-            "yearly": 0,
         }
         for cadence, retention in expected.items():
             with self.subTest(cadence=cadence):

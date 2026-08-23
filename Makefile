@@ -31,7 +31,7 @@ UV           ?= uv
 UV_RUN       := $(UV) run --locked
 
 SHELL_SOURCES := $(shell \
-	git ls-files '*.sh' 'overlay-root/usr/local/bin/garage' ':!:docs/history/**' | \
+	git ls-files '*.sh' ':!:docs/history/**' | \
 	while IFS= read -r source; do \
 		test ! -f "$$source" || printf '%s\n' "$$source"; \
 	done)

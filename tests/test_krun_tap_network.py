@@ -138,13 +138,12 @@ class KrunTapNetworkTests(unittest.TestCase):
             "rm -rf /etc/selinux/targeted",
             "mv /etc/selinux/targeted.rebuilt /etc/selinux/targeted",
             "dnf install -y",
-            "/usr/share/selinux/targeted/gssproxy-local.cil",
             "/usr/share/selinux/targeted/nas-krun-tun.cil",
             "semanage fcontext -a",
         )
         positions = [policy_layer.index(step) for step in policy_steps]
         self.assertEqual(positions, sorted(positions))
-        self.assertEqual(CONTAINERFILE.count("semodule --noreload --install"), 2)
+        self.assertEqual(CONTAINERFILE.count("semodule --noreload --install"), 1)
         self.assertEqual(CONTAINERFILE.count("cp -a /etc/selinux/targeted"), 1)
 
     def test_generic_networkd_wait_online_is_disabled(self):

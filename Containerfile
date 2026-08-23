@@ -158,8 +158,6 @@ RUN --mount=type=bind,from=zfs-rpms,source=/,target=/zfs-rpms \
         /zfs-rpms/other/zfs-dracut-*.noarch.rpm \
         /zfs-rpms/*."${arch}".rpm; \
     semodule --noreload --install \
-        /usr/share/selinux/targeted/gssproxy-local.cil; \
-    semodule --noreload --install \
         /usr/share/selinux/targeted/nas-krun-tun.cil; \
     mapfile -t image_assets < <( \
         awk "NF && !/^#/" /usr/share/nas/fleet/assets.list \

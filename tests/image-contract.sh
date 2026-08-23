@@ -32,7 +32,6 @@ for adapter in \
     test -x "${adapter}"
 done
 
-semodule -l | grep -Eq '^gssproxy-local[[:space:]]'
 semodule -l | grep -Eq '^nas-krun-tun[[:space:]]'
 
 systemd-analyze verify \

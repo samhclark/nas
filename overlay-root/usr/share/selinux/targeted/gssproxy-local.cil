@@ -1,3 +1,0 @@
-(block gssproxy_local
-  (allow init_t gssproxy_var_lib_t (dir (add_name)))
-)
