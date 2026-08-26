@@ -51,6 +51,7 @@ Environment=REDIS_PORT=6379
 Environment=IMMICH_MACHINE_LEARNING_URL=http://immich-machine-learning.krun:3003
 Environment=IMMICH_TRUSTED_PROXIES=10.253.9.2
 Environment=IMMICH_LOG_FORMAT=json
+Environment=TINI_SUBREAPER=1
 
 # Declarative library storage
 Volume=/var/lib/immich/library:/data

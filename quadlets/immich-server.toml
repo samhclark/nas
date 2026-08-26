@@ -37,6 +37,10 @@ IMMICH_MACHINE_LEARNING_URL = "http://immich-machine-learning.krun:3003"
 IMMICH_TRUSTED_PROXIES = "10.253.9.2"
 # Immich documents JSON as the structured format for log aggregation.
 IMMICH_LOG_FORMAT = "json"
+# libkrun's guest init remains PID 1. Register the image-provided Tini as a
+# child subreaper so it can manage descendants without emitting its PID-1
+# warning.
+TINI_SUBREAPER = "1"
 
 [krun]
 enabled = true

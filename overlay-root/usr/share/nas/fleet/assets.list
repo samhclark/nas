@@ -6,6 +6,7 @@
 /usr/share/nas/garage
 /usr/share/nas/grafana
 /usr/share/nas/immich-database
+/usr/share/nas/immich-valkey
 /usr/share/nas/jellyfin-exporter
 /usr/share/nas/prowlarr
 /usr/share/nas/radarr

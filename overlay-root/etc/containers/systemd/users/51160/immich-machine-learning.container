@@ -41,6 +41,7 @@ DropCapability=NET_RAW
 
 Environment=IMMICH_LOG_LEVEL=info
 Environment=NO_COLOR=true
+Environment=TINI_SUBREAPER=1
 Environment=XDG_CACHE_HOME=/.cache
 Environment=XDG_CONFIG_HOME=/.config
 Environment=HF_HOME=/.cache/huggingface

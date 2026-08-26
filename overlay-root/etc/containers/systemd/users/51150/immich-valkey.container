@@ -7,7 +7,7 @@ Documentation=https://valkey.io/
 ContainerName=immich-valkey
 Image=docker.io/valkey/valkey:9.1.1@sha256:70739f85ad2ee01a726a965584a0f94895f01b0c60b3cc8b0aeef11eaa6888cf
 LogDriver=journald
-Entrypoint=valkey-server
+Entrypoint=/usr/share/nas/immich-valkey/immich-valkey-entrypoint.sh
 PodmanArgs=--runtime=krun
 Annotation=krun.cpus=1
 Annotation=krun.ram_mib=512
@@ -38,6 +38,9 @@ User=1000:1000
 UserNS=keep-id:uid=1000,gid=1000
 NoNewPrivileges=true
 DropCapability=NET_RAW
+
+# Image-controlled Valkey entrypoint adapter (read-only)
+Volume=/usr/share/nas/immich-valkey:/usr/share/nas/immich-valkey:ro
 
 # Declarative data storage
 Volume=/var/lib/immich/valkey:/data

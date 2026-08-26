@@ -118,6 +118,17 @@ def materialize_asset(spec: Service, temporary: Path) -> tuple[Path, str]:
     return destination, spec.assets.path
 
 
+def postgres_data_container_path(spec: Service) -> str:
+    """Return the production-declared PostgreSQL storage mount target."""
+
+    storage = tuple(item for item in spec.storage if item.name == "data")
+    if len(storage) != 1 or len(storage[0].exports) != 1:
+        raise RuntimeError(
+            f"{spec.info.name} smoke requires one data storage with one export"
+        )
+    return storage[0].exports[0].container_path
+
+
 def ownership_snapshot(path: Path) -> dict[Path, tuple[int, int]]:
     paths = [path]
     if path.is_dir():
@@ -224,7 +235,7 @@ def smoke_postgresql_identity(
     )
     arguments += [
         "--volume",
-        f"{data}:/var/lib/postgresql/data:Z",
+        f"{data}:{postgres_data_container_path(spec)}:Z",
         "--volume",
         f"{asset[0]}:{asset[1]}:ro,Z",
         "--volume",
@@ -329,8 +340,28 @@ def smoke_valkey(spec: Service, temporary: Path) -> None:
     name = f"immich-valkey-smoke-{os.getpid()}-{uuid.uuid4().hex[:8]}"
     data = temporary / "valkey"
     data.mkdir(mode=0o750)
-    arguments = container_arguments(spec, name)
-    arguments += ["--volume", f"{data}:/data:Z", spec.container.image]
+    overcommit = temporary / "valkey-overcommit-memory"
+    overcommit.write_text("0\n")
+    asset = materialize_asset(spec, temporary)
+    # Ordinary rootless crun cannot change the host-global overcommit sysctl.
+    # Emulate libkrun's observed guest-root identity and give the adapter a
+    # disposable file standing in for the guest-private procfs value.
+    arguments = container_arguments(
+        spec,
+        name,
+        process_identity=GUEST_ROOT_IDENTITY,
+    )
+    arguments += [
+        "--volume",
+        f"{data}:/data:Z",
+        "--volume",
+        f"{asset[0]}:{asset[1]}:ro,Z",
+        "--volume",
+        f"{overcommit}:/run/nas-smoke/overcommit-memory:Z",
+        "--env",
+        "NAS_VALKEY_OVERCOMMIT_PATH=/run/nas-smoke/overcommit-memory",
+        spec.container.image,
+    ]
     if spec.container.exec is not None:
         arguments.extend(spec.container.exec.split())
 
@@ -338,6 +369,8 @@ def smoke_valkey(spec: Service, temporary: Path) -> None:
     try:
         run(arguments, capture=True)
         wait_for_exec(name, ["valkey-cli", "ping"], "Valkey")
+        if overcommit.read_text().strip() != "1":
+            raise RuntimeError("Valkey entrypoint did not enable memory overcommit")
     finally:
         run(["rm", "--force", "--ignore", name], capture=True, timeout=30)
 

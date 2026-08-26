@@ -58,12 +58,42 @@ class ImmichDeploymentTests(unittest.TestCase):
         self.assertIn("tcp 10.253.12.2:6379 300 2", server)
         self.assertIn("for i in {1..300}", server)
 
-    def test_valkey_bypasses_rootful_image_entrypoint(self):
+    def test_valkey_applies_guest_overcommit_policy_before_dropping_privileges(self):
         valkey = self.artifacts[
             Path("etc/containers/systemd/users/51150/immich-valkey.container")
         ]
-        self.assertIn("Entrypoint=valkey-server", valkey)
+        self.assertIn(
+            "Entrypoint=/usr/share/nas/immich-valkey/immich-valkey-entrypoint.sh",
+            valkey,
+        )
         self.assertIn("Exec=--port 6379", valkey)
+        self.assertIn(
+            "Volume=/usr/share/nas/immich-valkey:/usr/share/nas/immich-valkey:ro",
+            valkey,
+        )
+
+        assets = self.artifacts[Path("usr/share/nas/fleet/assets.list")]
+        self.assertIn("/usr/share/nas/immich-valkey", assets)
+
+        entrypoint = (
+            REPO
+            / "overlay-root/usr/share/nas/immich-valkey/immich-valkey-entrypoint.sh"
+        )
+        self.assertTrue(entrypoint.stat().st_mode & 0o111)
+        entrypoint_text = entrypoint.read_text()
+        self.assertIn('printf \'1\\n\' >"${overcommit_path}"', entrypoint_text)
+        self.assertIn("exec setpriv --reuid=1000 --regid=1000", entrypoint_text)
+
+    def test_tini_is_a_subreaper_beneath_libkrun_guest_init(self):
+        for uid, name in (
+            (51130, "immich-server"),
+            (51160, "immich-machine-learning"),
+        ):
+            with self.subTest(service=name):
+                unit = self.artifacts[
+                    Path(f"etc/containers/systemd/users/{uid}/{name}.container")
+                ]
+                self.assertIn("Environment=TINI_SUBREAPER=1", unit)
 
     def test_database_and_rebuildable_components_keep_distinct_storage(self):
         database = self.artifacts[

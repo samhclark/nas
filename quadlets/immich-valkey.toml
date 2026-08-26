@@ -16,12 +16,21 @@ display-name = "Immich Valkey"
 [container]
 image = "docker.io/valkey/valkey:9.1.1@sha256:70739f85ad2ee01a726a965584a0f94895f01b0c60b3cc8b0aeef11eaa6888cf"
 log-driver = "journald"
-entrypoint = "valkey-server"
+entrypoint = "/usr/share/nas/immich-valkey/immich-valkey-entrypoint.sh"
 exec = "--port 6379"
 network = "host"
 container-user = 1000
 no-new-privileges = true
 drop-capabilities = ["NET_RAW"]
+
+[[container.volumes]]
+comment = "Image-controlled Valkey entrypoint adapter (read-only)"
+source = "/usr/share/nas/immich-valkey"
+target = "/usr/share/nas/immich-valkey"
+options = "ro"
+
+[assets]
+path = "/usr/share/nas/immich-valkey"
 
 [krun]
 enabled = true

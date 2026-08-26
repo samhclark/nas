@@ -21,6 +21,14 @@ SPEC.loader.exec_module(SMOKE)
 
 
 class ImmichSmokeUnitTests(unittest.TestCase):
+    def test_postgresql_smoke_uses_the_production_storage_mount_target(self):
+        service = SMOKE.service("immich-database")
+
+        self.assertEqual(
+            SMOKE.postgres_data_container_path(service),
+            "/var/lib/postgresql",
+        )
+
     def test_declared_identity_uses_matching_process_and_keep_id_mapping(self):
         service = SMOKE.service("immich-database")
 
@@ -39,6 +47,18 @@ class ImmichSmokeUnitTests(unittest.TestCase):
         arguments = SMOKE.container_arguments(
             service,
             "postgres-smoke",
+            process_identity=SMOKE.GUEST_ROOT_IDENTITY,
+        )
+
+        self.assertIn("--user=0:0", arguments)
+        self.assertIn("--userns=keep-id:uid=1000,gid=1000", arguments)
+
+    def test_valkey_guest_root_smoke_uses_the_declared_keep_id_mapping(self):
+        service = SMOKE.service("immich-valkey")
+
+        arguments = SMOKE.container_arguments(
+            service,
+            "valkey-smoke",
             process_identity=SMOKE.GUEST_ROOT_IDENTITY,
         )
 

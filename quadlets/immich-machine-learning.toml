@@ -29,6 +29,9 @@ dns = ["100.100.100.100"]
 # information level explicitly.
 IMMICH_LOG_LEVEL = "info"
 NO_COLOR = "true"
+# libkrun's guest init remains PID 1. Tini should supervise the application's
+# descendants as a child subreaper instead of expecting to own the VM lifecycle.
+TINI_SUBREAPER = "1"
 # The image runs from /usr/src, so implicit user-cache discovery can resolve
 # beneath the immutable application tree under libkrun. Keep both the generic
 # XDG paths and Hugging Face's Xet transfer cache on declared writable storage.

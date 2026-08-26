@@ -46,7 +46,10 @@ class ImmichLoggingTests(unittest.TestCase):
         # speculative file-logging or collector flags that could hide them
         # from the host journal.
         self.assertEqual(database["exec"], "postgres -c config_file=/etc/postgresql/postgresql.conf")
-        self.assertEqual(valkey["entrypoint"], "valkey-server")
+        self.assertEqual(
+            valkey["entrypoint"],
+            "/usr/share/nas/immich-valkey/immich-valkey-entrypoint.sh",
+        )
         self.assertEqual(valkey["exec"], "--port 6379")
         for container in (database, valkey):
             self.assertNotIn("logging_collector", container.get("exec", ""))
