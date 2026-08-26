@@ -29,6 +29,13 @@ dns = ["100.100.100.100"]
 # information level explicitly.
 IMMICH_LOG_LEVEL = "info"
 NO_COLOR = "true"
+# The image runs from /usr/src, so implicit user-cache discovery can resolve
+# beneath the immutable application tree under libkrun. Keep both the generic
+# XDG paths and Hugging Face's Xet transfer cache on declared writable storage.
+XDG_CACHE_HOME = "/.cache"
+XDG_CONFIG_HOME = "/.config"
+HF_HOME = "/.cache/huggingface"
+HF_XET_CACHE = "/.cache/huggingface/xet"
 
 [krun]
 enabled = true

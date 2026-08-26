@@ -41,6 +41,10 @@ DropCapability=NET_RAW
 
 Environment=IMMICH_LOG_LEVEL=info
 Environment=NO_COLOR=true
+Environment=XDG_CACHE_HOME=/.cache
+Environment=XDG_CONFIG_HOME=/.config
+Environment=HF_HOME=/.cache/huggingface
+Environment=HF_XET_CACHE=/.cache/huggingface/xet
 
 # Declarative cache storage
 Volume=/var/lib/immich/machine-learning/models:/cache
