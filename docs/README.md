@@ -26,6 +26,8 @@ here rather than reading rollout plans or evidence logs.
   playback monitoring setup and interpretation
 - [`operations/immich.md`](operations/immich.md) — production topology,
   recovery classification, first use, and operator verification
+- [`operations/immich-restore.md`](operations/immich-restore.md) — accepted
+  recovery objective, reviewed restore sequence, and rehearsal evidence
 - [`operations/logging.md`](operations/logging.md) — host journald, Vector,
   VictoriaLogs pilot, and staged operator validation
 - [`operations/media-automation.md`](operations/media-automation.md) — the

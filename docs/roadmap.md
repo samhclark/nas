@@ -55,15 +55,15 @@ called out. A task is not active merely because it is listed here.
 
 ## Tier 0: protect irreplaceable data
 
-- [ ] **R1 — Rehearse an isolated Immich restore.** Define the recovery point
-  and acceptable data loss, prove that Immich's database-backup output is
-  being created and retained, and write a reviewed restore sequence pairing a
-  database recovery point with `tank/immich-server/library`. Restore into
-  disposable storage or a disposable VM, verify representative photos and
-  metadata, and record the application/image versions used. The rehearsal
-  must not write to production datasets. This concrete design should resolve
-  the open consistency questions in
-  [`proposals/application-backups.md`](proposals/application-backups.md).
+- [x] **R1 — Rehearse an isolated Immich restore.** Completed 2026-08-29 with
+  an accepted 24-hour database RPO. A retained Immich dump restored
+  transactionally into fresh PostgreSQL storage and ran with a writable clone
+  of the later authoritative-library point. All 11,810 authoritative source
+  records resolved to files; authentication, representative photos, an
+  original download, dates, and albums were verified. Disposable resources
+  were removed and production health rechecked. The reviewed procedure,
+  versions, evidence, generated-data classification, and SELinux details are
+  in [`operations/immich-restore.md`](operations/immich-restore.md).
 - [ ] **R2 — Replicate Immich off-site to the shared Hetzner Storage Box.** Do
   this after R1 defines the recoverable unit. Use a dedicated Storage Box
   sub-account, client-side authenticated encryption, a NAS-only write

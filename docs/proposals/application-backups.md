@@ -61,14 +61,21 @@ and `encoded-video` datasets plus the machine-learning caches are generated
 data and should not enter an off-site policy by default. A recovery design must
 still pair a database recovery point with the library it describes.
 
-## Questions to resolve before implementation
+## Decisions and remaining questions
 
-- Which data receives local snapshots only, rsync.net replication, B2 object
-  backup, or no backup?
-- Is application quiescing acceptable, or must database-native dumps provide
-  consistency while services remain available?
+The 2026-08-29 isolated Immich rehearsal resolved the application-specific
+recovery questions. Immich accepts a 24-hour database RPO. Its recoverable unit
+is a database dump plus a later authoritative-library point; thumbnails,
+encoded video, Valkey, and machine-learning state remain excluded. Verification
+uses a fresh transactional database restore, complete database-to-source-file
+existence checks, and isolated UI review. The concrete procedure and evidence
+are in [`../operations/immich-restore.md`](../operations/immich-restore.md).
+
+The destination and automation questions below remain for off-site replication:
+
+- Which destination and retention policy should protect the selected
+  authoritative unit?
 - How are encryption, credentials, bandwidth limits, retention, and deletion
   protection handled per destination?
-- How is a backup verified without risking production state?
-- What is the reviewed restore sequence for a fresh NAS, including ownership,
-  SELinux labels, secrets, databases, and application version compatibility?
+- How does automation monitor dump freshness, replication, and periodic
+  integrity checks without treating a local snapshot as an independent backup?

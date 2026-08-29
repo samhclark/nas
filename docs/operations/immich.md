@@ -56,6 +56,9 @@ SOPS and delivered as separate per-service runtime files.
 
 No off-site replication is enabled by this deployment. See the discussion-only
 [`../proposals/application-backups.md`](../proposals/application-backups.md).
+The accepted recovery objective, reviewed restore sequence, and first isolated
+rehearsal evidence are recorded in
+[`immich-restore.md`](immich-restore.md).
 
 ## Image compatibility preflight
 
