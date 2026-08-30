@@ -174,6 +174,12 @@ RUN --mount=type=bind,from=zfs-rpms,source=/,target=/zfs-rpms \
         # policy now; the reviewed operator migration applies the labels later. \
         semanage fcontext -a -t container_file_t -r s0 "${path}(/.*)?"; \
     done; \
+    # The backup repository is created by tmpfiles on the host and is mounted \
+    # into the root-managed restic guest without Podman relabel options. Keep \
+    # its persistent SELinux policy in the image so boot-time tmpfiles can \
+    # restore the repository root before the backup timers run. \
+    semanage fcontext -a -t container_file_t -r s0 \
+        "/var/lib/nas-backups/immich/restic(/.*)?"; \
     depmod -a "$(rpm -qa kernel --queryformat "%{VERSION}-%{RELEASE}.%{ARCH}")"; \
     echo "zfs" > /etc/modules-load.d/zfs.conf; \
     rm -rf /var/lib/pcp /var/cache/dnf; \

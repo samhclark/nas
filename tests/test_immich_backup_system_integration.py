@@ -114,6 +114,26 @@ class ImmichBackupSystemIntegrationTests(unittest.TestCase):
         self.assertIn("nas-backup-immich.timer", containerfile)
         self.assertIn("nas-maintain-immich-backup.timer", containerfile)
 
+    def test_backup_repository_has_persistent_selinux_policy_and_boot_repair(self):
+        containerfile = (REPO / "Containerfile").read_text()
+        self.assertIn(
+            'semanage fcontext -a -t container_file_t -r s0',
+            containerfile,
+        )
+        self.assertIn(
+            '"/var/lib/nas-backups/immich/restic(/.*)?"',
+            containerfile,
+        )
+        tmpfiles = (
+            OVERLAY / "usr/lib/tmpfiles.d/nas-backups.conf"
+        ).read_text()
+        self.assertIn(
+            "z /var/lib/nas-backups/immich/restic 0700 root root -",
+            tmpfiles,
+        )
+        self.assertNotIn("z /var/lib/nas-backups 0700", tmpfiles)
+        self.assertNotIn("z /var/lib/nas-backups/immich/state", tmpfiles)
+
     def test_backup_images_are_pinned_and_vm_launcher_is_hardened(self):
         runner = (
             OVERLAY / "usr/local/bin/nas-backup-immich"
