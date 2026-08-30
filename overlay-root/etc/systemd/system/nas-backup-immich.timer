@@ -1,0 +1,10 @@
+[Unit]
+Description=Run the encrypted Immich backup daily after its built-in database dump
+
+[Timer]
+OnCalendar=*-*-* 04:00:00 America/Chicago
+Persistent=true
+Unit=nas-backup-immich.service
+
+[Install]
+WantedBy=timers.target

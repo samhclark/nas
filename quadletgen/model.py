@@ -88,6 +88,14 @@ class FleetGroup:
 
 
 @dataclass(frozen=True, slots=True)
+class HostSecretConsumer:
+    """A root-owned host process receiving runtime secret files."""
+
+    name: str
+    secrets: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class MullvadEgress:
     interface: str
     address: ipaddress.IPv4Interface
@@ -296,6 +304,7 @@ class Fleet:
     groups: tuple[FleetGroup, ...] = ()
     resources: tuple[FleetStorageSpec, ...] = ()
     egress: MullvadEgress | None = None
+    host_secret_consumers: tuple[HostSecretConsumer, ...] = ()
 
     def __post_init__(self) -> None:
         if any(not isinstance(service, Service) for service in self.services):
@@ -311,8 +320,17 @@ class Fleet:
         groups: list[FleetGroup] | tuple[FleetGroup, ...] = (),
         resources: list[FleetStorageSpec] | tuple[FleetStorageSpec, ...] = (),
         egress: MullvadEgress | None = None,
+        host_secret_consumers: (
+            list[HostSecretConsumer] | tuple[HostSecretConsumer, ...]
+        ) = (),
     ) -> Fleet:
-        return cls(tuple(services), tuple(groups), tuple(resources), egress)
+        return cls(
+            tuple(services),
+            tuple(groups),
+            tuple(resources),
+            egress,
+            tuple(host_secret_consumers),
+        )
 
     @property
     def active_taps(self) -> tuple[Service, ...]:
@@ -612,6 +630,40 @@ def _validate_fleet_groups(fleet: Fleet) -> None:
             )
         seen_names[group.name] = index
         seen_gids[group.gid] = index
+
+
+def _validate_host_secret_consumers(fleet: Fleet) -> None:
+    if not isinstance(fleet.host_secret_consumers, tuple):
+        _fail(
+            "fleet.host-secret-consumers",
+            "must contain only HostSecretConsumer instances",
+        )
+    seen_consumers: set[str] = set()
+    service_names = {service.info.name for service in fleet.services}
+    for index, consumer in enumerate(fleet.host_secret_consumers, start=1):
+        path = f"fleet.host-secret-consumers[{index}]"
+        if not isinstance(consumer, HostSecretConsumer):
+            _fail(path, "must contain only HostSecretConsumer instances")
+        _validate_string(consumer.name, f"{path}.name")
+        if not NAME_RE.fullmatch(consumer.name):
+            _fail(f"{path}.name", f"must match {NAME_RE.pattern}")
+        if consumer.name in seen_consumers:
+            _fail(path, f"duplicate host secret consumer {consumer.name!r}")
+        if consumer.name in service_names or consumer.name == "mullvad":
+            _fail(
+                f"{path}.name",
+                "must not collide with a service or reserved host consumer",
+            )
+        if not consumer.secrets:
+            _fail(f"{path}.secrets", "must contain at least one secret")
+        if len(set(consumer.secrets)) != len(consumer.secrets):
+            _fail(f"{path}.secrets", "contains duplicates")
+        for secret_index, secret in enumerate(consumer.secrets, start=1):
+            secret_path = f"{path}.secrets[{secret_index}]"
+            _validate_string(secret, secret_path)
+            if not SECRET_NAME_RE.fullmatch(secret):
+                _fail(secret_path, f"must match {SECRET_NAME_RE.pattern}")
+        seen_consumers.add(consumer.name)
 
 
 def _validate_endpoints(service: Service) -> None:
@@ -1010,6 +1062,7 @@ def _validate_service(service: Service) -> None:
 def _validate_fleet(fleet: Fleet) -> None:
     services = fleet.services
     _validate_fleet_groups(fleet)
+    _validate_host_secret_consumers(fleet)
     if fleet.egress is not None:
         _validate_mullvad_egress(fleet.egress)
     if any(not isinstance(resource, FleetZfsStorage) for resource in fleet.resources):

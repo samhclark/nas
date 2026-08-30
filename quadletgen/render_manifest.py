@@ -54,6 +54,12 @@ def secrets_manifest(fleet: Fleet) -> str:
             )
     if fleet.egress is not None:
         lines.append(_row("mullvad", "root", fleet.egress.secret_name))
+    for consumer in sorted(
+        fleet.host_secret_consumers,
+        key=lambda item: item.name,
+    ):
+        for secret in consumer.secrets:
+            lines.append(_row(consumer.name, "root", secret))
     return "\n".join(lines) + "\n"
 
 

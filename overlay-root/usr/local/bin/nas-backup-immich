@@ -1,0 +1,424 @@
+#!/bin/bash
+# ABOUTME: Creates and verifies encrypted Immich backups locally and in B2.
+
+set -euo pipefail
+
+readonly DATASET="${NAS_BACKUP_DATASET:-tank/immich-server/library}"
+readonly SOURCE_ROOT="${NAS_BACKUP_SOURCE_ROOT:-/var/lib/immich/library}"
+readonly BACKUP_ROOT="${NAS_BACKUP_ROOT:-/var/lib/nas-backups/immich}"
+readonly REPOSITORY="${BACKUP_ROOT}/restic"
+readonly STATE_DIR="${BACKUP_ROOT}/state"
+readonly SECRET_DIR="${NAS_BACKUP_SECRET_DIR:-/run/nas-secrets/immich-backup}"
+readonly METRICS_FILE="${NAS_BACKUP_METRICS_FILE:-/var/lib/prometheus/node-exporter/nas_backup_immich.prom}"
+readonly LOCK_FILE="${NAS_BACKUP_LOCK_FILE:-/run/lock/nas-backup-immich.lock}"
+readonly RESTIC_IMAGE="docker.io/restic/restic:0.19.1@sha256:136600b6ff6843d61d355f7f71f460a166429f35de6fd11b568fece3c9a4d510"
+readonly RCLONE_IMAGE="docker.io/rclone/rclone:1.74.0@sha256:d2e0e88359d0b2e67cfcd2c43d5405185eb8adfc207079df27c42da82c5207bc"
+readonly SNAPSHOT_PREFIX="nas-backup-immich-"
+readonly MINIMUM_FREE_BYTES=$((100 * 1024 * 1024 * 1024))
+
+readonly ZFS_BIN="${ZFS_BIN:-/usr/sbin/zfs}"
+readonly GZIP_BIN="${GZIP_BIN:-/usr/bin/gzip}"
+readonly DATE_BIN="${DATE_BIN:-/usr/bin/date}"
+readonly DF_BIN="${DF_BIN:-/usr/bin/df}"
+readonly DU_BIN="${DU_BIN:-/usr/bin/du}"
+readonly JQ_BIN="${JQ_BIN:-/usr/bin/jq}"
+
+runtime_library="${NAS_BACKUP_RUNTIME_LIB:-/usr/local/lib/nas-backup-runtime.sh}"
+# shellcheck source=/dev/null
+source "${runtime_library}"
+
+RUN_RESULT=0
+RUN_STARTED=0
+SOURCE_SIZE=0
+TRANSFERRED_BYTES=0
+CURRENT_SNAPSHOT=
+RCLONE_ENV_FILE=
+REMOTE_RESTIC_ENV_FILE=
+
+usage() {
+    printf 'usage: %s {init|run|maintain|status}\n' "$0" >&2
+    exit 2
+}
+
+now_epoch() {
+    "${DATE_BIN}" --utc +%s
+}
+
+repository_size() {
+    if [[ -d "${REPOSITORY}" ]]; then
+        "${DU_BIN}" -sb -- "${REPOSITORY}" 2>/dev/null | /usr/bin/awk '{print $1}'
+    else
+        printf '0\n'
+    fi
+}
+
+filesystem_capacity() {
+    "${DF_BIN}" --output=avail,size -B1 -- "${BACKUP_ROOT}" \
+        | /usr/bin/awk 'NR == 2 {print $1, $2}'
+}
+
+free_bytes() {
+    filesystem_capacity | /usr/bin/awk '{print $1}'
+}
+
+require_capacity() {
+    local available
+    available="$(free_bytes)"
+    if [[ ! "${available}" =~ ^[0-9]+$ ]] || (( available < MINIMUM_FREE_BYTES )); then
+        printf 'Refusing backup: /var has %s bytes free; at least %s are required.\n' \
+            "${available:-unknown}" "${MINIMUM_FREE_BYTES}" >&2
+        return 1
+    fi
+}
+
+require_secret() {
+    local name=$1
+    local path="${SECRET_DIR}/${name}"
+    if [[ ! -s "${path}" ]]; then
+        printf 'Required Immich backup credential is unavailable: %s\n' "${name}" >&2
+        return 1
+    fi
+    local value
+    value="$(<"${path}")"
+    case "${value}" in
+        CHANGE_ME*|REPLACE_ME*|NOT_CONFIGURED*|PENDING_*|EXAMPLE*|example*|SENTINEL*)
+            printf 'Immich backup credential still has a sentinel value: %s\n' "${name}" >&2
+            return 1
+            ;;
+    esac
+}
+
+require_restic_secret() {
+    require_secret immich-backup-restic-password
+}
+
+require_b2_secrets() {
+    require_secret immich-backup-b2-key-id
+    require_secret immich-backup-b2-application-key
+    require_secret immich-backup-b2-bucket
+    require_secret immich-backup-b2-s3-endpoint
+    b2_region >/dev/null
+}
+
+b2_region() {
+    local endpoint
+    endpoint="$(<"${SECRET_DIR}/immich-backup-b2-s3-endpoint")"
+    if [[ "${endpoint}" =~ ^https://s3\.([a-z0-9-]+)\.backblazeb2\.com$ ]]; then
+        printf '%s\n' "${BASH_REMATCH[1]}"
+    else
+        printf 'Immich B2 S3 endpoint does not have the required regional form.\n' >&2
+        return 1
+    fi
+}
+
+validate_latest_dump() {
+    local newest metadata_before metadata_after size mtime age now
+    newest="$(
+        /usr/bin/find "${SOURCE_ROOT}/backups" -xdev -type f -name '*.sql.gz' \
+            -printf '%T@\t%p\n' 2>/dev/null \
+            | /usr/bin/sort -nr | /usr/bin/head -n 1 | /usr/bin/cut -f 2-
+    )"
+    if [[ -z "${newest}" ]]; then
+        printf 'No Immich SQL dump was found under %s/backups.\n' "${SOURCE_ROOT}" >&2
+        return 1
+    fi
+
+    metadata_before="$(/usr/bin/stat -c '%s:%Y' -- "${newest}")"
+    size=${metadata_before%%:*}
+    mtime=${metadata_before##*:}
+    now="$(now_epoch)"
+    age=$((now - mtime))
+    if (( size <= 0 )); then
+        printf 'Newest Immich SQL dump is empty: %s\n' "${newest}" >&2
+        return 1
+    fi
+    if (( age < 0 || age > 26 * 60 * 60 )); then
+        printf 'Newest Immich SQL dump is outside the 26-hour freshness window: %s\n' \
+            "${newest}" >&2
+        return 1
+    fi
+    "${GZIP_BIN}" --test -- "${newest}"
+    metadata_after="$(/usr/bin/stat -c '%s:%Y' -- "${newest}")"
+    if [[ "${metadata_before}" != "${metadata_after}" ]]; then
+        printf 'Newest Immich SQL dump changed during validation: %s\n' "${newest}" >&2
+        return 1
+    fi
+    printf 'Validated Immich database dump: %s (%s bytes).\n' "${newest}" "${size}"
+}
+
+restic_vm() {
+    require_restic_secret
+    nas_backup_run_vm none "${RESTIC_IMAGE}" - \
+        --env=RESTIC_REPOSITORY=/repository \
+        --env=RESTIC_PASSWORD_FILE=/run/secrets/restic-password \
+        --volume="${REPOSITORY}:/repository:rw" \
+        --volume="${SECRET_DIR}/immich-backup-restic-password:/run/secrets/restic-password:ro,Z" \
+        -- "$@"
+}
+
+restic_backup_snapshot() {
+    local snapshot_path=$1
+    nas_backup_run_vm none "${RESTIC_IMAGE}" - \
+        --env=RESTIC_REPOSITORY=/repository \
+        --env=RESTIC_PASSWORD_FILE=/run/secrets/restic-password \
+        --volume="${REPOSITORY}:/repository:rw" \
+        --volume="${snapshot_path}:/source:ro" \
+        --volume="${SECRET_DIR}/immich-backup-restic-password:/run/secrets/restic-password:ro,Z" \
+        -- backup /source --host nas --tag immich --one-file-system
+}
+
+prepare_rclone_environment() {
+    local region
+    require_b2_secrets
+    region="$(b2_region)"
+    RCLONE_ENV_FILE="${BACKUP_ROOT}/.rclone-env.$$"
+    umask 077
+    {
+        printf 'RCLONE_CONFIG_B2_TYPE=s3\n'
+        printf 'RCLONE_CONFIG_B2_PROVIDER=Other\n'
+        printf 'RCLONE_CONFIG_B2_ACCESS_KEY_ID=%s\n' "$(<"${SECRET_DIR}/immich-backup-b2-key-id")"
+        printf 'RCLONE_CONFIG_B2_SECRET_ACCESS_KEY=%s\n' "$(<"${SECRET_DIR}/immich-backup-b2-application-key")"
+        printf 'RCLONE_CONFIG_B2_ENDPOINT=%s\n' "$(<"${SECRET_DIR}/immich-backup-b2-s3-endpoint")"
+        printf 'RCLONE_CONFIG_B2_REGION=%s\n' "${region}"
+        printf 'RCLONE_CONFIG_B2_LOCATION_CONSTRAINT=%s\n' "${region}"
+    } > "${RCLONE_ENV_FILE}"
+}
+
+b2_destination() {
+    printf 'b2:%s/immich/restic\n' "$(<"${SECRET_DIR}/immich-backup-b2-bucket")"
+}
+
+mirror_repository() {
+    local destination log_file
+    prepare_rclone_environment
+    destination="$(b2_destination)"
+    log_file="${BACKUP_ROOT}/.rclone-log.$$"
+    if ! nas_backup_run_vm outbound "${RCLONE_IMAGE}" "${RCLONE_ENV_FILE}" \
+        --volume="${REPOSITORY}:/repository:ro" \
+        -- \
+        sync /repository "${destination}" --checksum --delete-after \
+        --exclude='/locks/**' --bwlimit=5Mi --use-json-log --stats=30s \
+        2> >(tee "${log_file}" >&2); then
+        /usr/bin/rm -f -- "${log_file}"
+        return 1
+    fi
+    TRANSFERRED_BYTES="$(
+        "${JQ_BIN}" -r 'select(.stats.bytes != null) | .stats.bytes' "${log_file}" \
+            2>/dev/null | /usr/bin/tail -n 1
+    )"
+    [[ "${TRANSFERRED_BYTES}" =~ ^[0-9]+$ ]] || TRANSFERRED_BYTES=0
+    /usr/bin/rm -f -- "${log_file}"
+
+    # This comparison is deliberately separate from sync: a successful sync
+    # process is not accepted until every visible repository byte agrees.
+    nas_backup_run_vm outbound "${RCLONE_IMAGE}" "${RCLONE_ENV_FILE}" \
+        --volume="${REPOSITORY}:/repository:ro" \
+        -- \
+        check /repository "${destination}" --checksum \
+        --exclude='/locks/**'
+}
+
+remote_restic_check() {
+    local bucket endpoint region subset
+    require_restic_secret
+    require_b2_secrets
+    bucket="$(<"${SECRET_DIR}/immich-backup-b2-bucket")"
+    endpoint="$(<"${SECRET_DIR}/immich-backup-b2-s3-endpoint")"
+    region="$(b2_region)"
+    subset=$(( ($(now_epoch) / 604800) % 12 + 1 ))/12
+    REMOTE_RESTIC_ENV_FILE="${BACKUP_ROOT}/.remote-restic-env.$$"
+    umask 077
+    {
+        printf 'RESTIC_REPOSITORY=s3:%s/%s/immich/restic\n' "${endpoint}" "${bucket}"
+        printf 'RESTIC_PASSWORD_FILE=/run/secrets/restic-password\n'
+        printf 'AWS_ACCESS_KEY_ID=%s\n' "$(<"${SECRET_DIR}/immich-backup-b2-key-id")"
+        printf 'AWS_SECRET_ACCESS_KEY=%s\n' "$(<"${SECRET_DIR}/immich-backup-b2-application-key")"
+        printf 'AWS_DEFAULT_REGION=%s\n' "${region}"
+    } > "${REMOTE_RESTIC_ENV_FILE}"
+    nas_backup_run_vm outbound "${RESTIC_IMAGE}" "${REMOTE_RESTIC_ENV_FILE}" \
+        --volume="${SECRET_DIR}/immich-backup-restic-password:/run/secrets/restic-password:ro,Z" \
+        -- check --read-data-subset="${subset}"
+    /usr/bin/rm -f -- "${REMOTE_RESTIC_ENV_FILE}"
+    REMOTE_RESTIC_ENV_FILE=
+}
+
+create_snapshot() {
+    local timestamp unique
+    timestamp="$("${DATE_BIN}" --utc +%Y%m%dT%H%M%SZ)"
+    unique="${NAS_BACKUP_UNIQUE_TOKEN:-$(/usr/bin/cut -c 1-8 /proc/sys/kernel/random/uuid)}"
+    CURRENT_SNAPSHOT="${DATASET}@${SNAPSHOT_PREFIX}${timestamp}-${unique}"
+    "${ZFS_BIN}" snapshot "${CURRENT_SNAPSHOT}"
+    printf '%s/.zfs/snapshot/%s\n' "${SOURCE_ROOT}" "${CURRENT_SNAPSHOT#*@}"
+}
+
+destroy_current_snapshot() {
+    if [[ -n "${CURRENT_SNAPSHOT}" ]]; then
+        "${ZFS_BIN}" destroy "${CURRENT_SNAPSHOT}"
+        CURRENT_SNAPSHOT=
+    fi
+}
+
+cleanup_stale_snapshots() {
+    local now name creation userrefs clones suffix age
+    now="$(now_epoch)"
+    while IFS=$'\t' read -r name creation userrefs clones; do
+        [[ -n "${name}" ]] || continue
+        suffix=${name#"${DATASET}@"}
+        [[ "${name}" == "${DATASET}@"* ]] || continue
+        [[ "${suffix}" =~ ^${SNAPSHOT_PREFIX}[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$ ]] || continue
+        age=$((now - creation))
+        (( age > 48 * 60 * 60 )) || continue
+        if (( userrefs != 0 )) || [[ "${clones}" != - ]]; then
+            printf 'Stale backup snapshot retained because it has holds or clones: %s\n' "${name}" >&2
+            continue
+        fi
+        printf 'Removing stale backup-owned snapshot: %s\n' "${name}" >&2
+        "${ZFS_BIN}" destroy "${name}"
+    done < <("${ZFS_BIN}" list -H -p -o name,creation,userrefs,clones -t snapshot "${DATASET}")
+}
+
+record_success() {
+    nas_backup_record_timestamp "${STATE_DIR}/$1" "$(now_epoch)"
+}
+
+emit_metrics() {
+    local now duration available total repository_bytes local_success remote_success integrity_success integrity_result
+    now="$(now_epoch)"
+    duration=$((RUN_STARTED > 0 ? now - RUN_STARTED : 0))
+    read -r available total < <(filesystem_capacity 2>/dev/null || printf '0 0\n')
+    repository_bytes="$(repository_size)"
+    local_success="$(nas_backup_read_timestamp "${STATE_DIR}/local-success")"
+    remote_success="$(nas_backup_read_timestamp "${STATE_DIR}/remote-success")"
+    integrity_success="$(nas_backup_read_timestamp "${STATE_DIR}/integrity-success")"
+    integrity_result="$(nas_backup_read_timestamp "${STATE_DIR}/integrity-result")"
+    nas_backup_write_metrics "${METRICS_FILE}" <<EOF
+# HELP nas_backup_last_success_timestamp_seconds Last successful backup stage by destination.
+# TYPE nas_backup_last_success_timestamp_seconds gauge
+nas_backup_last_success_timestamp_seconds{application="immich",destination="local"} ${local_success}
+nas_backup_last_success_timestamp_seconds{application="immich",destination="b2"} ${remote_success}
+# HELP nas_backup_last_run_success Whether the last completed invocation succeeded.
+# TYPE nas_backup_last_run_success gauge
+nas_backup_last_run_success{application="immich"} $((RUN_RESULT == 0 ? 1 : 0))
+# HELP nas_backup_integrity_last_success_timestamp_seconds Last weekly local and remote integrity success.
+# TYPE nas_backup_integrity_last_success_timestamp_seconds gauge
+nas_backup_integrity_last_success_timestamp_seconds{application="immich"} ${integrity_success}
+nas_backup_integrity_last_run_success{application="immich"} ${integrity_result}
+nas_backup_source_size_bytes{application="immich"} ${SOURCE_SIZE}
+nas_backup_repository_size_bytes{application="immich"} ${repository_bytes}
+nas_backup_last_run_duration_seconds{application="immich"} ${duration}
+nas_backup_last_transferred_bytes{application="immich",destination="b2"} ${TRANSFERRED_BYTES}
+nas_backup_filesystem_available_bytes{application="immich",mount="/var"} ${available:-0}
+nas_backup_filesystem_size_bytes{application="immich",mount="/var"} ${total:-0}
+EOF
+}
+
+cleanup() {
+    local status=$?
+    local final_status=${status}
+    trap - EXIT
+    (( status == 0 )) || RUN_RESULT=1
+    if [[ -n "${CURRENT_SNAPSHOT}" ]]; then
+        if ! destroy_current_snapshot; then
+            RUN_RESULT=1
+            final_status=1
+        fi
+    fi
+    [[ -z "${RCLONE_ENV_FILE}" ]] || /usr/bin/rm -f -- "${RCLONE_ENV_FILE}"
+    [[ -z "${REMOTE_RESTIC_ENV_FILE}" ]] || /usr/bin/rm -f -- "${REMOTE_RESTIC_ENV_FILE}"
+    emit_metrics || true
+    if (( RUN_RESULT != 0 && final_status == 0 )); then
+        final_status=1
+    fi
+    exit "${final_status}"
+}
+
+initialize_repository() {
+    require_capacity
+    require_restic_secret
+    require_b2_secrets
+    if [[ -n "$(/usr/bin/find "${REPOSITORY}" -mindepth 1 -maxdepth 1 -print -quit)" ]]; then
+        printf 'Refusing to initialize a nonempty local restic repository path.\n' >&2
+        return 1
+    fi
+    restic_vm init
+    restic_vm check
+    record_success local-success
+    mirror_repository
+    record_success remote-success
+}
+
+run_backup() {
+    local snapshot_path
+    require_capacity
+    require_restic_secret
+    require_b2_secrets
+    validate_latest_dump
+    SOURCE_SIZE="$("${DU_BIN}" -sbx -- "${SOURCE_ROOT}" | /usr/bin/awk '{print $1}')"
+    cleanup_stale_snapshots
+    create_snapshot >/dev/null
+    snapshot_path="${SOURCE_ROOT}/.zfs/snapshot/${CURRENT_SNAPSHOT#*@}"
+    restic_backup_snapshot "${snapshot_path}"
+    restic_vm check
+    record_success local-success
+    mirror_repository
+    record_success remote-success
+    destroy_current_snapshot
+}
+
+maintain_repository() {
+    require_capacity
+    nas_backup_record_timestamp "${STATE_DIR}/integrity-result" 0
+    restic_vm forget --keep-daily=14 --keep-weekly=8 --keep-monthly=12 \
+        --keep-yearly=3 --prune
+    restic_vm check
+    mirror_repository
+    record_success remote-success
+    remote_restic_check
+    record_success integrity-success
+    nas_backup_record_timestamp "${STATE_DIR}/integrity-result" 1
+    cleanup_stale_snapshots
+}
+
+status_report() {
+    local available total stale=0 total_snapshots=0
+    read -r available total < <(filesystem_capacity)
+    while IFS=$'\t' read -r name creation userrefs clones; do
+        [[ -n "${name}" ]] || continue
+        if [[ "${name}" =~ @${SNAPSHOT_PREFIX}[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$ ]]; then
+            total_snapshots=$((total_snapshots + 1))
+            if (( $(now_epoch) - creation > 48 * 60 * 60 )); then
+                stale=$((stale + 1))
+            fi
+        fi
+    done < <("${ZFS_BIN}" list -H -p -o name,creation,userrefs,clones -t snapshot "${DATASET}")
+    printf 'filesystem_available_bytes=%s\n' "${available}"
+    printf 'filesystem_size_bytes=%s\n' "${total}"
+    printf 'local_last_success=%s\n' "$(nas_backup_read_timestamp "${STATE_DIR}/local-success")"
+    printf 'remote_last_success=%s\n' "$(nas_backup_read_timestamp "${STATE_DIR}/remote-success")"
+    printf 'integrity_last_success=%s\n' "$(nas_backup_read_timestamp "${STATE_DIR}/integrity-success")"
+    printf 'repository_size_bytes=%s\n' "$(repository_size)"
+    printf 'backup_owned_staging_snapshots=%s\n' "${total_snapshots}"
+    printf 'stale_staging_snapshots=%s\n' "${stale}"
+}
+
+main() {
+    (( $# == 1 )) || usage
+    /usr/bin/mkdir -p -- "${BACKUP_ROOT}" "${REPOSITORY}" "${STATE_DIR}" "${LOCK_FILE%/*}"
+    /usr/bin/chmod 0700 "${BACKUP_ROOT}" "${REPOSITORY}" "${STATE_DIR}"
+    exec 9>"${LOCK_FILE}"
+    if ! /usr/bin/flock -n 9; then
+        printf 'Another Immich backup operation holds %s.\n' "${LOCK_FILE}" >&2
+        return 1
+    fi
+    RUN_STARTED="$(now_epoch)"
+    trap cleanup EXIT
+    case "$1" in
+        init) initialize_repository ;;
+        run) run_backup ;;
+        maintain) maintain_repository ;;
+        status) status_report ;;
+        *) usage ;;
+    esac
+}
+
+main "$@"

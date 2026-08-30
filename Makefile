@@ -140,6 +140,10 @@ test: ## Run unit tests
 smoke-immich-images: ## Run Podman-only smoke tests for pinned Immich companion images
 	@CONTAINER_CLI="$(PODMAN)" $(UV_RUN) python scripts/smoke-immich-images.py
 
+.PHONY: smoke-immich-backup
+smoke-immich-backup: ## Exercise an encrypted local Immich backup and restore round trip
+	@CONTAINER_CLI="$(PODMAN)" $(UV_RUN) python scripts/smoke-immich-backup.py
+
 ARR_SMOKE_STARTUP_TIMEOUT_SECONDS ?= 60
 ARR_SMOKE_OBSERVE_SECONDS ?= 10
 .PHONY: smoke-arr-images

@@ -60,6 +60,8 @@ done < /usr/share/nas/fleet/egress-units.list
 for unit in \
     bootc-fetch-apply-updates.timer \
     disk-health-metrics.timer \
+    nas-backup-immich.timer \
+    nas-maintain-immich-backup.timer \
     nas-krun-network-policy.service \
     nftables.service \
     node_exporter.service \

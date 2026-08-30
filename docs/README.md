@@ -27,7 +27,8 @@ here rather than reading rollout plans or evidence logs.
 - [`operations/immich.md`](operations/immich.md) — production topology,
   recovery classification, first use, and operator verification
 - [`operations/immich-restore.md`](operations/immich-restore.md) — accepted
-  recovery objective, reviewed restore sequence, and rehearsal evidence
+  recovery objective, direct B2 recovery, reviewed restore sequence, and
+  rehearsal evidence
 - [`operations/logging.md`](operations/logging.md) — host journald, Vector,
   VictoriaLogs pilot, and staged operator validation
 - [`operations/media-automation.md`](operations/media-automation.md) — the
@@ -39,8 +40,8 @@ here rather than reading rollout plans or evidence logs.
 ## Proposals
 
 - [`proposals/application-backups.md`](proposals/application-backups.md) —
-  discussion-only direction for application-aware snapshots, selective
-  off-site replication, and holistic restore design
+  accepted Immich-specific restic/B2 boundary, isolation model, retention,
+  provisioning, monitoring, and completion gate
 
 Completed migration plans and rollout evidence are retained only for
 provenance. They are not current instructions and live under

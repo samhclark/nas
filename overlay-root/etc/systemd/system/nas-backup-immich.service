@@ -1,0 +1,29 @@
+[Unit]
+Description=Create and replicate the encrypted Immich backup repository
+Documentation=https://github.com/samhclark/nas/blob/main/docs/operations/immich.md
+Requires=zfs.target sops-distribute-secrets.service nas-prepare-immich-server-storage.service
+After=zfs.target sops-distribute-secrets.service nas-prepare-immich-server-storage.service
+ConditionPathIsDirectory=/sys/module/zfs
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/nas-backup-immich run
+User=root
+UMask=0077
+Nice=10
+CPUWeight=20
+IOWeight=20
+IOSchedulingClass=idle
+IOSchedulingPriority=7
+TimeoutStartSec=infinity
+StandardOutput=journal
+StandardError=journal
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelLogs=yes
+ProtectClock=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+ReadWritePaths=/var/lib/nas-backups /var/lib/containers /var/lib/prometheus/node-exporter

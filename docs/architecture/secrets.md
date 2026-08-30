@@ -4,8 +4,9 @@
 
 SOPS-encrypted YAML in the image is the persistent source of truth. A single
 root-owned boot service decrypts it and writes only the files each service is
-allowed to read under `/run/nas-secrets/`. Rootless containers mount those
-ephemeral files read-only.
+allowed to read under `/run/nas-secrets/`. Rootless containers mount their
+ephemeral files read-only; typed root-only host consumers read their own files
+directly.
 
 Do not introduce rootless Podman `Secret=` objects or give service users an
 age private key. This boundary is deliberate, not unfinished migration work.
@@ -30,6 +31,8 @@ At boot, `sops-distribute-secrets.service` recreates this tmpfs hierarchy:
 /run/nas-secrets/                         0711 root:root
 /run/nas-secrets/<service>/               0710 root:<service-user>
 /run/nas-secrets/<service>/<secret-name>  0400 <service-user>:<service-user>
+/run/nas-secrets/<host-consumer>/         0710 root:root
+/run/nas-secrets/<host-consumer>/<secret> 0400 root:root
 ```
 
 The generated Quadlet contract is:
@@ -40,7 +43,20 @@ ExecStartPre=/usr/bin/test -r /run/nas-secrets/<service>/<secret-name>
 ```
 
 The compiler derives the service/secret mapping from `quadlets/*.toml` and
-verifies that every declared name exists as an encrypted top-level key.
+verifies that every declared name exists as an encrypted top-level key. A
+root-managed program that needs narrowly scoped secrets declares a
+`[[host-secret-consumers]]` entry in `quadlets/_fleet.toml`. The generated
+manifest uses username `root`; this is a separate typed path and does not grant
+those files to any service user or container.
+
+The initial host consumer is `immich-backup`. Its restic password and four B2
+connection values are written below `/run/nas-secrets/immich-backup/` for the
+root-managed backup runner. The no-network restic guest receives only the
+password file. The outbound rclone guest receives only the B2 connection
+values and the encrypted repository, while the weekly direct remote restic
+check receives both credential sets. See
+[`../proposals/application-backups.md`](../proposals/application-backups.md)
+for the backup-specific isolation and recovery contract.
 
 ## Mullvad WireGuard key
 

@@ -1,81 +1,139 @@
-# Application backup and replication proposal
+# Application backup and replication design
 
-Status: discussion only. This document records a direction; it is not an
-implemented runtime contract or an instruction to enable backup jobs.
+Status: implemented and provisioned for Immich as of 2026-08-30; deployment,
+first backup, and restore validation remain pending. The implementation remains
+deliberately application-specific; this document does not define a generic
+backup schema or authorize arbitrary backup hooks in service TOML.
 
-## Problem
+## Recovery boundary
 
-Backups should describe a recoverable application, not merely a list of
-directories or datasets. Multi-component applications such as Immich combine
-state with different consistency and recovery requirements: original assets,
-database records, configuration, generated derivatives, and caches. The *arr
-stack adds shared media and download trees whose ownership does not align with
-one component or even one application's backup boundary.
+Backups describe a recoverable application, not merely a list of directories.
+Immich accepts a 24-hour off-site RPO. Its recovery point is the newest
+validated database dump plus a later point of the authoritative filesystem:
 
-Local ZFS snapshots are useful rollback points, but they are not sufficient
-backups because they share the NAS's failure domain. Off-site replication may
-use different destinations and retention policies. Small, irreplaceable data
-could reasonably be replicated to rsync.net or Backblaze B2, while large media
-libraries may be deliberately excluded because their storage and restore cost
-would exceed their value.
+- `tank/immich-server/library`, including uploaded originals, managed-library
+  originals, profiles, and Immich's database-backup output, is included;
+- the child `thumbs` and `encoded-video` datasets, live PostgreSQL storage,
+  Valkey state, machine-learning caches, and bulk media are excluded; and
+- the database dump must be nonempty, gzip-valid, unchanged while validated,
+  and less than 26 hours old before a filesystem snapshot is taken.
 
-## Proposed principles
+The daily runner creates a uniquely named, nonrecursive ZFS snapshot of the
+library after validating the dump. That ordering may retain unreferenced files,
+but must not select a database point that refers to authoritative files absent
+from the filesystem point. The runner always destroys its current staging
+snapshot. On later runs it reports and removes only snapshots with the exact
+backup-owned prefix that are older than 48 hours and have neither holds nor
+clones.
 
-1. Start from the recovery outcome: which applications and shared data must be
-   restorable, to what point in time, and with what acceptable data loss.
-2. Keep application membership, storage ownership, and backup selection as
-   separate concepts. Membership can help coordinate quiescing without making
-   every mounted dataset part of the same backup.
-3. Distinguish irreplaceable inputs and databases from reproducible derivatives
-   and caches. Do not upload thumbnails, transcodes, model caches, or temporary
-   downloads merely because they are mounted by the application.
-4. Treat database and filesystem consistency as an application-level concern.
-   For Immich, a usable recovery point must pair its database with the asset
-   files that database references.
-5. Make exclusions explicit. In particular, media should not silently enter an
-   off-site policy through application membership or a shared mount.
-6. Separate local snapshots, off-site replication, retention, verification,
-   and restore rehearsal. Success in one stage must not imply the others work.
-7. Prefer generated inventories and validation where they prevent omissions,
-   but keep unusual quiesce, dump, and restore procedures explicit and
-   reviewable until repeated production needs justify a typed abstraction.
+## Local repository and isolation
 
-## Possible future shape
+The local repository is `/var/lib/nas-backups/immich/restic`. A pinned restic
+0.19.1 image runs as a short-lived root-managed libkrun guest with no network,
+a read-only snapshot mount, the repository read-write, and only the restic
+password credential. The guest has 2 vCPUs, 2 GiB RAM, reduced CPU and I/O
+priority, no capabilities, and a read-only root filesystem. Every nonzero
+restic exit status, including partial-backup status 3, fails the run.
 
-A future application-level backup declaration might select named storage
-resources, declare a consistency procedure, and assign each selected resource
-to one or more destinations. The compiler could derive dataset inventories,
-reject accidental inclusion of explicitly excluded media, and coordinate
-bounded stop/start ordering for the application's components.
+Restic provides encryption and authentication before any repository object is
+eligible for replication. A local structural check is a hard gate: failed
+verification preserves the local recovery point but prevents all replication.
+Retention keeps 14 daily, 8 weekly, 12 monthly, and 3 yearly snapshots.
+`forget --prune` runs weekly, followed by another local check before the
+changed repository is mirrored. See restic's
+[encryption design](https://restic.readthedocs.io/en/stable/070_encryption.html)
+for the repository confidentiality and authentication boundary.
 
-That future language should be driven by the concrete Immich recovery design
-and at least one additional application such as the *arr stack. This proposal
-does not add backup fields to today's service TOML and does not authorize a
-generic hook or arbitrary-shell mechanism.
+The current 500 GB root drive is sufficient for today's approximately 40.6 GB
+library. The planned 1 TB root-drive replacement is mandatory before importing
+the additional approximately 300 GB library; see
+[`../operations/immich.md`](../operations/immich.md).
 
-The initial Immich deployment provides useful classification boundaries without
-implementing backup automation. `tank/immich-server/library` contains the
-authoritative photo library, profiles, and Immich's database-backup output;
-`tank/immich-database/data` contains the live database. The separate `thumbs`
-and `encoded-video` datasets plus the machine-learning caches are generated
-data and should not enter an off-site policy by default. A recovery design must
-still pair a database recovery point with the library it describes.
+## B2 replication boundary
 
-## Decisions and remaining questions
+One private NAS-backups B2 bucket may contain separate application prefixes,
+but every application has an independent repository, credential, schedule, and
+recovery procedure. Immich owns `immich/restic/`. Future Paperless work must
+use its own prefix and must not broaden the Immich credential.
 
-The 2026-08-29 isolated Immich rehearsal resolved the application-specific
-recovery questions. Immich accepts a 24-hour database RPO. Its recoverable unit
-is a database dump plus a later authoritative-library point; thumbnails,
-encoded video, Valkey, and machine-learning state remain excluded. Verification
-uses a fresh transactional database restore, complete database-to-source-file
-existence checks, and isolated UI review. The concrete procedure and evidence
-are in [`../operations/immich-restore.md`](../operations/immich-restore.md).
+A pinned rclone 1.74.0 image runs in a separate outbound-enabled libkrun guest.
+It receives the encrypted local repository read-only plus only the Immich B2
+credential, bucket, and S3 endpoint. It never receives the restic password or
+the photo-library mount. It synchronizes the complete repository, excluding
+restic lock files, with checksum comparison, `--delete-after`, and a 5 MiB/s
+upload limit. Local and B2 repository bytes are compared after every sync.
+Failure leaves the local backup intact and does not advance the remote-success
+timestamp. The ordering follows the documented
+[rclone sync behavior](https://rclone.org/commands/rclone_sync/): new objects
+arrive before deletions are applied.
 
-The destination and automation questions below remain for off-site replication:
+The operator provisions the private bucket and an Immich key limited to the
+bucket prefix and the required read, write, and delete capabilities. The
+operator also creates a prefix lifecycle rule with
+`daysFromHidingToDeleting: 30` and no upload-age hiding. This preserves hidden
+versions for deletion recovery without expiring current restic objects. Bucket
+creation, application-key creation, and lifecycle configuration are manual B2
+control-plane actions and are never performed automatically by the NAS image.
+See Backblaze's
+[lifecycle-rule documentation](https://www.backblaze.com/docs/en/cloud-storage-lifecycle-rules).
 
-- Which destination and retention policy should protect the selected
-  authoritative unit?
-- How are encryption, credentials, bandwidth limits, retention, and deletion
-  protection handled per destination?
-- How does automation monitor dump freshness, replication, and periodic
-  integrity checks without treating a local snapshot as an independent backup?
+## Secrets and operator interface
+
+The SOPS source contains five host-only values, distributed as root-owned
+runtime files:
+
+- `immich-backup-restic-password`
+- `immich-backup-b2-key-id`
+- `immich-backup-b2-application-key`
+- `immich-backup-b2-bucket`
+- `immich-backup-b2-s3-endpoint`
+
+All five real values were added through the existing SOPS workflow on
+2026-08-30. The generated restic password was copied to the administrator's
+external password manager. R3 still owns verification that the complete
+recovery set—including bucket identity and endpoint, the scoped B2 recovery
+credential, and minimum fresh-host recovery instructions—is independently
+available. Neither generated defaults nor placeholder credentials are
+acceptable for deployment.
+
+The stable operator entry points are:
+
+- `nas-backup-immich init` explicitly initializes an empty local repository
+  and performs the first mirror. Access failures never auto-initialize it.
+- `nas-backup-immich run` performs the daily dump validation, snapshot, local
+  backup and check, and B2 mirror under one lock.
+- `nas-backup-immich maintain` performs retention, integrity checks, and
+  replication under the same lock.
+- `nas-backup-immich status` reports capacity, latest local and remote success,
+  repository size, snapshots, and stale staging snapshots without secrets.
+
+The daily timer runs at 04:00 America/Chicago, after Immich's 02:00 database
+dump. Deployment follows the normal main-branch image flow. B2 and SOPS
+provisioning completed on 2026-08-30. Agents do not SSH to the NAS; the operator
+initializes the repository, triggers the first run, and returns secret-safe
+output from reviewed commands.
+
+## Verification and completion
+
+Atomic node-exporter textfile metrics cover local and remote last success,
+current run result, integrity-check success, source and repository sizes,
+duration, and transferred bytes. Alerts fire when local or remote success is
+missing or older than 36 hours, a completed run fails, integrity verification
+is older than 10 days, or `/var` has less than 100 GiB or 20% free.
+
+Local and remote structural checks run weekly. The remote check rotates
+`--read-data-subset=1/12` so all B2 pack data is cryptographically read over
+twelve weeks. These checks complement the byte comparison after each mirror;
+none substitutes for an application-level restore.
+
+R2 remains incomplete until the first B2 backup is restored from B2 into a
+disposable ZFS dataset and fresh application state. Completion requires the
+database-to-authoritative-file check, representative UI and original-download
+checks, teardown of disposable resources, and production-health revalidation.
+The authoritative procedure is
+[`../operations/immich-restore.md`](../operations/immich-restore.md).
+
+Only after Paperless supplies a second concrete consistency and recovery model
+should the project generalize an application backup schema. VM-launching and
+metric-writing primitives may be shared without pretending that applications
+have interchangeable recovery semantics.

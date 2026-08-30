@@ -64,24 +64,32 @@ called out. A task is not active merely because it is listed here.
   were removed and production health rechecked. The reviewed procedure,
   versions, evidence, generated-data classification, and SELinux details are
   in [`operations/immich-restore.md`](operations/immich-restore.md).
-- [ ] **R2 — Replicate Immich off-site to the shared Hetzner Storage Box.** Do
-  this after R1 defines the recoverable unit. Use a dedicated Storage Box
-  sub-account, client-side authenticated encryption, a NAS-only write
-  credential, and recovery key material stored somewhere other than only the
-  NAS. Select only authoritative library and database-backup data by default;
-  exclude thumbnails, encoded video, caches, and bulk media. Add bounded
-  bandwidth, retention, failure alerts, periodic integrity checks, and a
-  restore rehearsal from Hetzner. Hetzner supports isolated sub-account
-  directories and SSH-key access, and supports Borg, rsync, and restic over
-  its SSH/SFTP boundary; tool selection remains part of the design. Storage
-  Box snapshots can add deletion recovery but are not an independent backup.
-  See the official [Storage Box overview](https://docs.hetzner.com/storage/storage-box/general/),
-  [SSH/Borg documentation](https://docs.hetzner.com/storage/storage-box/access/access-ssh-rsync-borg/),
-  and [snapshot warning](https://docs.hetzner.com/storage/storage-box/snapshots/).
+- [ ] **R2 — Back up Immich to encrypted restic storage and Backblaze B2.** A
+  daily host runner pairs the newest validated Immich SQL dump with a later,
+  nonrecursive snapshot of `tank/immich-server/library`. A no-network libkrun
+  guest writes an encrypted local restic repository; a separate guest, which
+  never receives the restic password or photo-library mount, mirrors the
+  repository byte-for-byte to `immich/restic/` in a private B2 bucket. Keep 14
+  daily, 8 weekly, 12 monthly, and 3 yearly restore points; bound uploads to
+  5 MiB/s; alert on stale local or remote success, failed runs, stale integrity
+  verification, and low `/var` capacity; and perform weekly local and remote
+  structural checks with a rotating remote data subset. Operator provisioning
+  completed 2026-08-30: the private bucket, `immich/restic/` lifecycle rule,
+  prefix-scoped application key, five real SOPS values, and external escrow of
+  the restic encryption password are in place. Deployment, repository
+  initialization, and validation remain pending. R2 is not complete merely
+  when the first upload succeeds: it requires a full isolated restore from B2,
+  representative UI and original-download checks, cleanup of disposable
+  resources, and production-health revalidation. See
+  [`proposals/application-backups.md`](proposals/application-backups.md) and
+  [`operations/immich-restore.md`](operations/immich-restore.md).
 - [ ] **R3 — Protect the recovery inputs themselves.** Document and test access
-  to the SOPS age key, LUKS recovery material, Storage Box recovery credential,
-  and the minimum fresh-host bootstrap sequence. Secret values remain outside
-  the repository. This can be completed alongside R1 and R2.
+  to the SOPS age key, LUKS recovery material, the Immich B2 recovery
+  credential, the restic repository password, the bucket name and endpoint,
+  and the minimum fresh-host bootstrap sequence. Keep the B2 and restic
+  recovery material in the administrator's external password manager rather
+  than only on the NAS or in this repository. Secret values remain outside the
+  repository. This can be completed alongside R2.
 
 ## Tier 1: finish existing safety and visibility work
 

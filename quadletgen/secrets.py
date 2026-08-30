@@ -16,6 +16,11 @@ def verify_sops(fleet: Fleet, sops_file: Path) -> None:
     }
     if fleet.egress is not None:
         declared.add(("_fleet.toml", fleet.egress.secret_name))
+    declared.update(
+        ("_fleet.toml", secret)
+        for consumer in fleet.host_secret_consumers
+        for secret in consumer.secrets
+    )
     if not declared:
         return
     if not sops_file.exists():

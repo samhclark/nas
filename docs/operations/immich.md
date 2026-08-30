@@ -54,11 +54,44 @@ SOPS and delivered as separate per-service runtime files.
 - Machine-learning state remains persistent for smooth restarts but is not an
   authoritative recovery input.
 
-No off-site replication is enabled by this deployment. See the discussion-only
+The host-side backup design protects only the authoritative library dataset,
+including its database-backup directory. The separate `thumbs` and
+`encoded-video` child datasets are naturally excluded by the nonrecursive ZFS
+snapshot, and the live PostgreSQL dataset, Valkey, machine-learning caches, and
+bulk media are not backup inputs. See
 [`../proposals/application-backups.md`](../proposals/application-backups.md).
-The accepted recovery objective, reviewed restore sequence, and first isolated
-rehearsal evidence are recorded in
+The accepted recovery objective, reviewed local and B2 restore sequence, and
+isolated-rehearsal evidence are recorded in
 [`immich-restore.md`](immich-restore.md).
+
+Backup control-plane provisioning completed on 2026-08-30: the private B2
+bucket, `immich/restic/` lifecycle rule, prefix-scoped application key, all five
+real SOPS values, and external escrow of the restic encryption password are in
+place. Deployment, explicit repository initialization, the first backup, and
+the direct-B2 restore rehearsal remain pending.
+
+## Capacity gate before a large import
+
+The current 500 GB root drive is sufficient for the existing approximately
+40.6 GB Immich library and its local encrypted restic repository. It is not the
+approved capacity for the planned additional approximately 300 GB import. The
+planned 1 TB root-drive replacement is a mandatory precondition for that
+import, even if a point-in-time free-space reading appears to fit the source.
+The local repository must retain headroom for restic retention and prune work,
+and the host alert contract reserves at least 100 GiB and 20% free on `/var`.
+
+Before starting the large import, the operator must complete the drive swap and
+confirm both the backup runner's capacity report and the filesystem directly:
+
+```bash
+sudo nas-backup-immich status
+df -h /var
+```
+
+Do not start the import unless `status` reports that the local repository is
+healthy and both free-space thresholds remain satisfied after accounting for
+the projected library. This check complements, rather than replaces, a recent
+successful local backup and B2 mirror.
 
 ## Image compatibility preflight
 

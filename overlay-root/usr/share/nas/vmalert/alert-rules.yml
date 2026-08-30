@@ -78,6 +78,15 @@ groups:
 
   - name: filesystem-health
     rules:
+      - alert: ImmichBackupVarCapacityLow
+        expr: nas_backup_filesystem_available_bytes{mount="/var"} < 107374182400 or (nas_backup_filesystem_available_bytes{mount="/var"} / nas_backup_filesystem_size_bytes{mount="/var"}) < 0.20
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Immich backup capacity is below its safety margin"
+          description: "The root filesystem has less than 100 GiB or 20% free. Immich backup and library-import operations must stop until capacity is restored."
+
       - alert: RootFilesystemFull
         expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) < 0.1
         for: 15m
@@ -133,3 +142,50 @@ groups:
         annotations:
           summary: "ZFS pool {{ $labels.pool }} is not healthy"
           description: "ZFS pool {{ $labels.pool }} is in a degraded, faulted, or otherwise unhealthy state. Check `zpool status` immediately."
+
+  - name: backup-health
+    rules:
+      - alert: ImmichLocalBackupStale
+        expr: absent(nas_backup_last_success_timestamp_seconds{application="immich",destination="local"}) or time() - nas_backup_last_success_timestamp_seconds{application="immich",destination="local"} > 129600
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Immich local backup is missing or stale"
+          description: "No successful local Immich backup has completed in the last 36 hours."
+
+      - alert: ImmichB2BackupStale
+        expr: absent(nas_backup_last_success_timestamp_seconds{application="immich",destination="b2"}) or time() - nas_backup_last_success_timestamp_seconds{application="immich",destination="b2"} > 129600
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Immich B2 backup is missing or stale"
+          description: "No successful B2 replication of the Immich repository has completed in the last 36 hours."
+
+      - alert: ImmichBackupRunFailed
+        expr: nas_backup_last_run_success{application="immich"} == 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "The latest Immich backup run failed"
+          description: "The completed Immich backup workflow reported failure. The previous successful local and remote timestamps remain authoritative."
+
+      - alert: ImmichBackupIntegrityStale
+        expr: absent(nas_backup_integrity_last_success_timestamp_seconds{application="immich"}) or time() - nas_backup_integrity_last_success_timestamp_seconds{application="immich"} > 864000
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Immich backup integrity verification is stale"
+          description: "No successful structural integrity verification of the Immich backup repository has completed in the last 10 days."
+
+      - alert: ImmichBackupIntegrityFailed
+        expr: nas_backup_integrity_last_run_success{application="immich"} == 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "The latest Immich backup integrity check failed"
+          description: "Do not replicate or prune the Immich restic repository until the integrity failure has been investigated."

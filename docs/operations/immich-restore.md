@@ -2,13 +2,11 @@
 
 ## Scope
 
-This is the authoritative Immich restore runbook. It currently covers selecting
-and validating a local recovery point, restoring it into isolation, proving the
-application-level result, and tearing the rehearsal down safely. The off-site
-replication work in roadmap item R2 will extend the front of this runbook with
-remote inventory, retrieval, decryption, integrity verification, and
-fresh-host bootstrap steps. Those additions do not replace the recovery-unit,
-restore, or acceptance contracts proved here.
+This is the authoritative Immich restore runbook. It covers local and Backblaze
+B2 recovery-point selection, retrieval and decryption, restoration into
+isolation, application-level validation, and safe teardown. Remote repository
+access does not replace the recovery-unit, restore, or acceptance contracts
+proved by the first local rehearsal.
 
 ## Recovery objective
 
@@ -37,6 +35,105 @@ regenerable derivatives or caches. Immich v3 can retain hidden `asset` records
 whose `originalPath` is below `/data/encoded-video`; validation must classify
 those as generated data rather than missing authoritative originals.
 
+## B2 recovery prerequisites
+
+The administrator's external password manager, rather than the NAS alone,
+must contain the restic repository password, Immich-scoped B2 key ID and
+application key, bucket name, S3 endpoint, and this runbook. Recovery also
+requires pinned or version-compatible `restic` and `rclone` binaries and enough
+disposable capacity for the selected repository point plus fresh PostgreSQL
+state. The scoped key must be able to read `immich/restic/`; routine recovery
+does not require write or delete access even though the NAS replication key
+has those narrowly scoped capabilities.
+
+Use a trusted, isolated recovery workstation or a reviewed disposable host.
+Do not print credentials, place them in shell history, or copy them into this
+repository. The following examples assume the operator has exposed an rclone
+S3 remote named `b2`, exported the same scoped key as `AWS_ACCESS_KEY_ID` and
+`AWS_SECRET_ACCESS_KEY`, set `B2_ENDPOINT` and `B2_BUCKET` from password-manager
+values, and written the restic password to a mode-`0600` temporary file. The
+direct restic repository URL is:
+
+```text
+s3:<B2-S3-endpoint>/<NAS-backups-bucket>/immich/restic
+```
+
+Record the recovery host, restic and rclone versions, repository ID, selected
+snapshot ID and time, and Immich/PostgreSQL versions. Do not record secret
+values or original filenames as routine evidence.
+
+## Inventory and direct remote verification
+
+Inventory B2 before restoring. Listing the repository should show `config` and
+the ordinary restic `data`, `index`, `keys`, and `snapshots` trees beneath the
+single application prefix. An empty prefix, a second nested `restic` directory,
+or selected internal objects rather than the complete tree is a replication
+failure, not a reason to initialize anything.
+
+```bash
+rclone lsf "b2:${B2_BUCKET}/immich/restic" \
+  --recursive --files-only
+rclone size "b2:${B2_BUCKET}/immich/restic"
+RESTIC_PASSWORD_FILE="${RESTIC_PASSWORD_FILE}" \
+  restic -r "s3:${B2_ENDPOINT}/${B2_BUCKET}/immich/restic" snapshots --compact
+RESTIC_PASSWORD_FILE="${RESTIC_PASSWORD_FILE}" \
+  restic -r "s3:${B2_ENDPOINT}/${B2_BUCKET}/immich/restic" check
+```
+
+Here `B2_BUCKET` is the bucket name from external escrow, not a guessed default.
+The inventory uses rclone while restic accesses the same prefix directly
+through B2's S3 endpoint; neither requires first copying repository objects to
+the NAS. Treat any nonzero status as failure. Never run `restic init`, `forget`,
+`prune`, `repair`, or `rclone sync` while investigating a remote repository. If
+direct structural verification fails, preserve the B2 inventory and logs,
+inspect hidden B2 object versions, and recover to a separate prefix or local
+directory; do not overwrite the only off-site copy.
+
+Select a snapshot only after its host, tags, source path, and time match the
+expected Immich job. Restore directly from B2 into an empty local staging
+directory and retain the restic log:
+
+```bash
+RESTIC_PASSWORD_FILE="${RESTIC_PASSWORD_FILE}" \
+  restic -r "s3:${B2_ENDPOINT}/${B2_BUCKET}/immich/restic" \
+  restore "${RESTIC_SNAPSHOT_ID}" --target "${RESTORE_STAGING_DIRECTORY}"
+```
+
+The repository objects remain restic-encrypted in B2 and use the S3 transport
+only as opaque objects; restic authenticates and decrypts file content at the
+restore destination. If the archived source path is uncertain, first run
+`restic ls` with the same `-r` repository option and selected snapshot ID.
+Then identify the restored authoritative-library root. Do not flatten or
+rearrange it until the restore has completed successfully.
+
+## Disposable ZFS destination
+
+On the NAS, an operator may copy the decrypted restore to a uniquely named,
+empty disposable dataset. Agents must not execute these commands on the NAS.
+Resolve and review the literal dataset and mountpoint first; never reuse a
+production dataset or broad recursive target. A representative creation and
+labeling sequence is:
+
+```bash
+sudo zfs create \
+  -o mountpoint=/var/lib/nas-restore/immich-b2-library \
+  tank/immich-b2-restore
+sudo chown 51130:51130 /var/lib/nas-restore/immich-b2-library
+sudo semanage fcontext -a -r s0 -t container_file_t \
+  '/var/lib/nas-restore/immich-b2-library(/.*)?'
+sudo restorecon -F -R -x /var/lib/nas-restore/immich-b2-library
+```
+
+Copy the restored authoritative tree into that mountpoint without crossing
+filesystems unintentionally, then repeat `restorecon`. Do not recursively
+normalize ownership: preserve restic's restored descendant IDs and require the
+dataset root itself to use the production service identity. Verify a bounded
+sample is within the service or subordinate-ID ownership contract and reports
+`object_r:container_file_t:s0`. Preserve xattrs during transfer, but treat the
+destination host's persistent fcontext rule as authoritative. Use separate
+small scratch directories for the fresh PostgreSQL, Valkey, `thumbs`, and
+`encoded-video` state required by the isolated application rehearsal.
+
 ## Reviewed restore sequence
 
 Use the same Immich application version and compatible PostgreSQL major version
@@ -48,7 +145,8 @@ a production dataset writable into a rehearsal.
    PostgreSQL version, and configured retention. Run `gzip --test` on the dump.
 2. Capture or select the filesystem point taken after the dump. For a local
    rehearsal, create a manually named ZFS snapshot and a writable clone with an
-   unmistakably disposable dataset name.
+   unmistakably disposable dataset name. For B2, restore the selected restic
+   snapshot into the empty disposable dataset described above.
 3. Give the clone the production service identity and
    `container_file_t:s0` SELinux contract. Use small privately relabeled
    scratch directories for fresh PostgreSQL and Valkey state.
@@ -72,14 +170,69 @@ a production dataset writable into a rehearsal.
    originals, an original download, dates, and album membership. Do not run
    bulk thumbnail, transcoding, or machine-learning jobs merely to make the
    rehearsal UI attractive.
-10. Stop and remove the disposable containers and network, destroy the clone
-    and rehearsal snapshot, and remove only the explicitly named scratch
-    directory. Recheck that production Immich remains healthy.
+10. Stop and remove the disposable containers and network, destroy only the
+    explicitly named clone or B2 restore dataset and rehearsal snapshot, remove
+    the matching scratch directory and temporary recovery credentials, and
+    remove the temporary fcontext rule if its path will not be reused. Recheck
+    that production Immich remains healthy.
 
 For a real recovery, replace the local ZFS snapshot with the authoritative
 filesystem copy from the backup destination, install the real runtime secrets,
 restore ownership and persistent SELinux policy, and expose Immich only after
 the database-to-source-file validation passes.
+
+## R2 rollout and completion gate
+
+Provisioning status as of 2026-08-30:
+
+- the private B2 bucket and `immich/restic/` prefix lifecycle rule are in place;
+- the prefix-scoped read/write application key is in place;
+- all five backup secrets contain their real values in SOPS; and
+- the restic encryption password is escrowed in the administrator's external
+  password manager.
+
+Image deployment, explicit repository initialization, first backup and mirror,
+and the isolated direct-B2 restore rehearsal remain pending. The broader R3
+recovery-material verification remains separate from this provisioning status.
+
+Before the first run, the operator manually creates one private NAS-backups B2
+bucket, the `immich/restic/` application prefix, and an application key limited
+to that bucket prefix with only the read, write, delete, and listing abilities
+needed by replication and verification. Configure a prefix lifecycle rule with
+`daysFromHidingToDeleting: 30` and no upload-age hiding. This retains replaced
+or deleted versions temporarily without hiding live restic objects.
+
+Through the existing SOPS workflow, the operator supplies
+`immich-backup-restic-password`, `immich-backup-b2-key-id`,
+`immich-backup-b2-application-key`, `immich-backup-b2-bucket`, and
+`immich-backup-b2-s3-endpoint`. Copy the strong generated restic password,
+bucket identity, scoped B2 credential, and minimum recovery instructions to the
+external password manager before initialization. Do not commit plaintext or
+send it back as command output.
+
+After deployment through the normal main-branch image flow, the reviewed
+operator sequence is:
+
+```bash
+sudo nas-backup-immich status
+sudo nas-backup-immich init
+sudo nas-backup-immich status
+```
+
+Initialization is explicit and only for a confirmed-empty local repository; an
+access or password failure must never trigger reinitialization. Observe the
+potentially multi-hour first upload through systemd status, secret-safe logs,
+backup metrics, and B2 inventory. Then perform the direct-B2 isolated restore
+above, including the complete database-to-authoritative-file comparison,
+representative older and recent UI checks, an original download, date and
+album verification, disposable-resource cleanup, and production Immich health
+revalidation.
+
+Do not mark roadmap R2 complete based on successful initialization, upload,
+repository checks, or metrics alone. The isolated restore from B2 and all
+acceptance and cleanup checks are the completion gate. Record the rehearsal
+date, selected snapshot, versions, counts, and secret-safe outcome in this
+document when it passes.
 
 ## Rehearsal evidence: 2026-08-29
 

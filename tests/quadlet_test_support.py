@@ -9,6 +9,7 @@ from quadletgen.parser import (
     load_fleet_config,
     load_fleet_egress,
     load_fleet_storage,
+    load_host_secret_consumers,
     load_service,
 )
 
@@ -25,6 +26,7 @@ def current_fleet() -> Fleet:
         groups=load_fleet_config(fleet_config),
         resources=load_fleet_storage(fleet_config),
         egress=load_fleet_egress(fleet_config),
+        host_secret_consumers=load_host_secret_consumers(fleet_config),
     )
 
 

@@ -206,6 +206,8 @@ RUN --mount=type=bind,from=zfs-rpms,source=/,target=/zfs-rpms \
         zfs-snapshots-daily@videos.timer \
         zfs-snapshots-weekly@videos.timer \
         disk-health-metrics.timer \
+        nas-backup-immich.timer \
+        nas-maintain-immich-backup.timer \
         node_exporter.service; \
     systemctl disable systemd-networkd-wait-online.service; \
     systemctl disable zincati.service; \

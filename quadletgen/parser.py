@@ -16,6 +16,7 @@ from .model import (
     DependencyCondition,
     Endpoint,
     FleetGroup,
+    HostSecretConsumer,
     HostIdentity,
     KrunNetwork,
     KrunPasst,
@@ -595,7 +596,39 @@ def _load_fleet_tables(toml_path: Path) -> dict[str, object]:
     with toml_path.open("rb") as config_file:
         raw = tomllib.load(config_file)
     name = toml_path.name
-    return _table(raw, name, {"groups", "resources", "egress"})
+    return _table(
+        raw,
+        name,
+        {"groups", "resources", "egress", "host-secret-consumers"},
+    )
+
+
+def load_host_secret_consumers(
+    toml_path: Path,
+) -> tuple[HostSecretConsumer, ...]:
+    name = toml_path.name
+    top = _load_fleet_tables(toml_path)
+    raw = top.get("host-secret-consumers", [])
+    path = f"{name}: [[host-secret-consumers]]"
+    if not isinstance(raw, list):
+        _fail(path, "must be an array of tables")
+    result = []
+    for index, item in enumerate(raw, start=1):
+        item_path = f"{path}[{index}]"
+        table = _table(item, item_path, {"name", "secrets"})
+        result.append(
+            HostSecretConsumer(
+                name=_string(
+                    _required(table, "name", item_path),
+                    f"{item_path}.name",
+                ),
+                secrets=_string_array(
+                    _required(table, "secrets", item_path),
+                    f"{item_path}.secrets",
+                ),
+            )
+        )
+    return tuple(result)
 
 
 def load_fleet_config(toml_path: Path) -> tuple[FleetGroup, ...]:

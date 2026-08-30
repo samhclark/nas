@@ -161,6 +161,14 @@ class FleetManifestTests(unittest.TestCase):
             expected_secrets.append(
                 ["mullvad", "root", self.fleet.egress.secret_name]
             )
+        expected_secrets.extend(
+            [consumer.name, "root", secret]
+            for consumer in sorted(
+                self.fleet.host_secret_consumers,
+                key=lambda item: item.name,
+            )
+            for secret in consumer.secrets
+        )
         expected_assets = [
             [service.assets.path]
             for service in sorted(

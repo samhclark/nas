@@ -8,6 +8,16 @@
 name = "media"
 gid = 52000
 
+[[host-secret-consumers]]
+name = "immich-backup"
+secrets = [
+  "immich-backup-restic-password",
+  "immich-backup-b2-key-id",
+  "immich-backup-b2-application-key",
+  "immich-backup-b2-bucket",
+  "immich-backup-b2-s3-endpoint",
+]
+
 [egress.mullvad]
 interface = "wg-arr"
 address = "10.72.38.9/32"
