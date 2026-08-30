@@ -111,6 +111,7 @@ class ImmichBackupSystemIntegrationTests(unittest.TestCase):
 
     def test_image_enables_backup_timers(self):
         containerfile = (REPO / "Containerfile").read_text()
+        self.assertIn("nas-prepare-immich-backup-storage.service", containerfile)
         self.assertIn("nas-backup-immich.timer", containerfile)
         self.assertIn("nas-maintain-immich-backup.timer", containerfile)
 
@@ -133,6 +134,44 @@ class ImmichBackupSystemIntegrationTests(unittest.TestCase):
         )
         self.assertNotIn("z /var/lib/nas-backups 0700", tmpfiles)
         self.assertNotIn("z /var/lib/nas-backups/immich/state", tmpfiles)
+
+    def test_backup_operations_reconcile_active_selinux_policy_without_recursive_relabel(self):
+        preparer = (
+            OVERLAY / "usr/local/bin/nas-prepare-immich-backup-storage"
+        ).read_text()
+        self.assertIn('"${MATCHPATHCON_BIN}" -n -- "${REPOSITORY}"', preparer)
+        self.assertIn(
+            '"${SEMANAGE_BIN}" fcontext -a -t container_file_t -r s0 "${target}"',
+            preparer,
+        )
+        self.assertIn(
+            '"${SEMANAGE_BIN}" fcontext -m -t container_file_t -r s0 "${target}"',
+            preparer,
+        )
+        self.assertIn('"${RESTORECON_BIN}" -F -- "${REPOSITORY}"', preparer)
+        self.assertNotIn('restorecon -F -R', preparer)
+
+        runner = (
+            OVERLAY / "usr/local/bin/nas-backup-immich"
+        ).read_text()
+        self.assertEqual(runner.count('"${PREPARE_STORAGE_BIN}"'), 3)
+
+        preparation_unit = (
+            OVERLAY
+            / "etc/systemd/system/nas-prepare-immich-backup-storage.service"
+        ).read_text()
+        self.assertIn(
+            "After=local-fs.target systemd-tmpfiles-setup.service",
+            preparation_unit,
+        )
+        self.assertIn("WantedBy=multi-user.target", preparation_unit)
+        for name in (
+            "nas-backup-immich.service",
+            "nas-maintain-immich-backup.service",
+        ):
+            unit = (OVERLAY / "etc/systemd/system" / name).read_text()
+            self.assertIn("nas-prepare-immich-backup-storage.service", unit)
+            self.assertNotIn("ReadWritePaths=/etc/selinux", unit)
 
     def test_backup_images_are_pinned_and_vm_launcher_is_hardened(self):
         runner = (

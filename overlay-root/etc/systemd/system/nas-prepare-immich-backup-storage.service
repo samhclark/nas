@@ -1,0 +1,16 @@
+[Unit]
+Description=Prepare SELinux policy for the Immich backup repository
+Documentation=https://github.com/samhclark/nas/blob/main/docs/operations/immich.md
+After=local-fs.target systemd-tmpfiles-setup.service
+Before=nas-backup-immich.service nas-maintain-immich-backup.service
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/local/bin/nas-prepare-immich-backup-storage
+RemainAfterExit=yes
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

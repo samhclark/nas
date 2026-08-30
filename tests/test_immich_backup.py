@@ -100,6 +100,9 @@ class ImmichBackupTests(unittest.TestCase):
         self.fake_df = self.write_executable("df", FAKE_DF)
         self.fake_zfs = self.write_executable("zfs", FAKE_ZFS)
         self.fake_podman = self.write_executable("podman", FAKE_PODMAN)
+        self.fake_prepare = self.write_executable(
+            "prepare-storage", "#!/bin/bash\nexit 0\n"
+        )
         self.environment = os.environ | {
             "NAS_BACKUP_SOURCE_ROOT": str(self.source),
             "NAS_BACKUP_ROOT": str(self.backup),
@@ -112,6 +115,7 @@ class ImmichBackupTests(unittest.TestCase):
             "DF_BIN": str(self.fake_df),
             "ZFS_BIN": str(self.fake_zfs),
             "PODMAN_BIN": str(self.fake_podman),
+            "NAS_BACKUP_PREPARE_STORAGE_BIN": str(self.fake_prepare),
             "FAKE_NOW": str(NOW),
             "FAKE_FREE": str(200 * 1024**3),
             "FAKE_TOTAL": str(500 * 1024**3),

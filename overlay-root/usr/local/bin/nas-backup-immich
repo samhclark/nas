@@ -22,6 +22,7 @@ readonly DATE_BIN="${DATE_BIN:-/usr/bin/date}"
 readonly DF_BIN="${DF_BIN:-/usr/bin/df}"
 readonly DU_BIN="${DU_BIN:-/usr/bin/du}"
 readonly JQ_BIN="${JQ_BIN:-/usr/bin/jq}"
+readonly PREPARE_STORAGE_BIN="${NAS_BACKUP_PREPARE_STORAGE_BIN:-/usr/local/bin/nas-prepare-immich-backup-storage}"
 
 runtime_library="${NAS_BACKUP_RUNTIME_LIB:-/usr/local/lib/nas-backup-runtime.sh}"
 # shellcheck source=/dev/null
@@ -333,6 +334,7 @@ cleanup() {
 }
 
 initialize_repository() {
+    "${PREPARE_STORAGE_BIN}"
     require_capacity
     require_restic_secret
     require_b2_secrets
@@ -349,6 +351,7 @@ initialize_repository() {
 
 run_backup() {
     local snapshot_path
+    "${PREPARE_STORAGE_BIN}"
     require_capacity
     require_restic_secret
     require_b2_secrets
@@ -366,6 +369,7 @@ run_backup() {
 }
 
 maintain_repository() {
+    "${PREPARE_STORAGE_BIN}"
     require_capacity
     nas_backup_record_timestamp "${STATE_DIR}/integrity-result" 0
     restic_vm forget --keep-daily=14 --keep-weekly=8 --keep-monthly=12 \

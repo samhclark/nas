@@ -1,0 +1,47 @@
+#!/bin/bash
+# ABOUTME: Reconciles the local Immich backup repository's SELinux policy.
+
+set -euo pipefail
+
+readonly REPOSITORY="${NAS_BACKUP_REPOSITORY:-/var/lib/nas-backups/immich/restic}"
+readonly EXPECTED_CONTEXT="system_u:object_r:container_file_t:s0"
+readonly SEMANAGE_BIN="${SEMANAGE_BIN:-/usr/sbin/semanage}"
+readonly MATCHPATHCON_BIN="${MATCHPATHCON_BIN:-/usr/sbin/matchpathcon}"
+readonly RESTORECON_BIN="${RESTORECON_BIN:-/usr/sbin/restorecon}"
+readonly STAT_BIN="${STAT_BIN:-/usr/bin/stat}"
+
+die() {
+    printf 'Immich backup storage preparation failed: %s\n' "$*" >&2
+    exit 1
+}
+
+[[ "${EUID}" -eq 0 ]] || die "must run as root"
+[[ -d "${REPOSITORY}" ]] || die "repository directory is missing: ${REPOSITORY}"
+
+target="${REPOSITORY//./\\.}(/.*)?"
+# bootc preserves the active /etc/selinux store across image upgrades. The
+# image's /usr/etc rule is therefore only a default for new installations;
+# reconcile the one application-owned rule into the live store when needed.
+expected="$("${MATCHPATHCON_BIN}" -n -- "${REPOSITORY}")" ||
+    die "unable to read SELinux policy for ${REPOSITORY}"
+if [[ "${expected}" != "${EXPECTED_CONTEXT}" ]]; then
+    if ! "${SEMANAGE_BIN}" fcontext -a -t container_file_t -r s0 "${target}" 2>/dev/null; then
+        "${SEMANAGE_BIN}" fcontext -m -t container_file_t -r s0 "${target}" ||
+            die "unable to install SELinux policy for ${REPOSITORY}"
+    fi
+    expected="$("${MATCHPATHCON_BIN}" -n -- "${REPOSITORY}")" ||
+        die "unable to verify SELinux policy for ${REPOSITORY}"
+    [[ "${expected}" == "${EXPECTED_CONTEXT}" ]] ||
+        die "SELinux policy still expects ${expected} for ${REPOSITORY}"
+fi
+
+actual="$("${STAT_BIN}" -c %C -- "${REPOSITORY}")" ||
+    die "unable to read SELinux context for ${REPOSITORY}"
+if [[ "${actual}" != "${EXPECTED_CONTEXT}" ]]; then
+    "${RESTORECON_BIN}" -F -- "${REPOSITORY}" ||
+        die "unable to restore SELinux context for ${REPOSITORY}"
+    actual="$("${STAT_BIN}" -c %C -- "${REPOSITORY}")" ||
+        die "unable to verify SELinux context for ${REPOSITORY}"
+    [[ "${actual}" == "${EXPECTED_CONTEXT}" ]] ||
+        die "repository has SELinux context ${actual}; expected ${EXPECTED_CONTEXT}"
+fi
