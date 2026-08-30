@@ -55,6 +55,9 @@ done
 if [[ -n "${FAKE_PODMAN_FAIL_MATCH:-}" && "$*" == *"${FAKE_PODMAN_FAIL_MATCH}"* ]]; then
   exit "${FAKE_PODMAN_FAIL_STATUS:-1}"
 fi
+if [[ " $* " == *" snapshots --json --no-lock "* ]]; then
+  printf '[]\n'
+fi
 if [[ " $* " == *" sync "* ]]; then
   printf '%s\n' '{"stats":{"bytes":12345}}' >&2
 fi
@@ -74,11 +77,24 @@ class ImmichBackupTests(unittest.TestCase):
         self.podman_log = self.directory / "podman.log"
         self.zfs_log = self.directory / "zfs.log"
         self.zfs_state = self.directory / "zfs-state"
+        self.network_ready = self.directory / "network-ready"
+        self.boot_id = self.directory / "boot-id"
+        self.sys_class_net = self.directory / "sys-class-net"
+        self.host_tap_manifest = self.directory / "host-vm-taps.tsv"
+        self.network_lock = self.directory / "host-vm-tap-network.lock"
         for path in (self.source / "backups", self.secrets, self.bin):
             path.mkdir(parents=True)
         self.podman_log.write_text("")
         self.zfs_log.write_text("")
         self.zfs_state.write_text("")
+        self.network_ready.write_text("test-boot-id\n")
+        self.boot_id.write_text("test-boot-id\n")
+        (self.sys_class_net / "krun-backup").mkdir(parents=True)
+        self.host_tap_manifest.write_text(
+            "# name\ttap\tguest\tmanaged-units\n"
+            "immich-backup\tkrun-backup\t10.253.19.2/30\t"
+            "nas-backup-immich.service,nas-maintain-immich-backup.service\n"
+        )
 
         dump = self.source / "backups" / "immich-db.sql.gz"
         with gzip.open(dump, "wb") as output:
@@ -116,6 +132,12 @@ class ImmichBackupTests(unittest.TestCase):
             "ZFS_BIN": str(self.fake_zfs),
             "PODMAN_BIN": str(self.fake_podman),
             "NAS_BACKUP_PREPARE_STORAGE_BIN": str(self.fake_prepare),
+            "NAS_BACKUP_TUN_DEVICE": "/dev/null",
+            "NAS_BACKUP_NETWORK_READY_FILE": str(self.network_ready),
+            "NAS_BACKUP_BOOT_ID_FILE": str(self.boot_id),
+            "NAS_BACKUP_SYS_CLASS_NET": str(self.sys_class_net),
+            "NAS_BACKUP_HOST_TAP_MANIFEST": str(self.host_tap_manifest),
+            "NAS_BACKUP_NETWORK_LOCK_FILE": str(self.network_lock),
             "FAKE_NOW": str(NOW),
             "FAKE_FREE": str(200 * 1024**3),
             "FAKE_TOTAL": str(500 * 1024**3),
@@ -160,8 +182,11 @@ class ImmichBackupTests(unittest.TestCase):
         self.assertIn("sync /repository", calls[2])
         self.assertIn("--delete-after", calls[2])
         self.assertIn("--bwlimit=5Mi", calls[2])
-        self.assertIn("krun.use_passt=1", calls[2])
-        self.assertNotIn("--network=host", calls[2])
+        self.assertIn("krun.tap_name=krun-backup", calls[2])
+        self.assertIn("--network=host", calls[2])
+        self.assertIn("--device=/dev/null", calls[2])
+        self.assertIn("io.samhclark.nas.host-vm-tap=immich-backup", calls[2])
+        self.assertNotIn("krun.use_passt", calls[2])
         self.assertIn("--pull=missing", calls[2])
         self.assertIn("check /repository", calls[3])
         self.assertNotIn("--one-way", calls[3])
@@ -191,6 +216,8 @@ class ImmichBackupTests(unittest.TestCase):
         self.assertNotIn("restic-password", calls[2])
         self.assertNotIn(str(self.source), calls[2])
         self.assertNotIn("krun.use_passt", calls[0])
+        self.assertNotIn("krun.tap_name", calls[0])
+        self.assertNotIn("--device=", calls[0])
 
     def test_restic_partial_backup_status_three_prevents_verification_and_replication(self) -> None:
         result = self.invoke(
@@ -308,7 +335,9 @@ class ImmichBackupTests(unittest.TestCase):
         self.assertIn("sync /repository", calls[2])
         self.assertIn("check /repository", calls[3])
         self.assertIn("--read-data-subset=", calls[4])
-        self.assertIn("krun.use_passt=1", calls[4])
+        self.assertIn("krun.tap_name=krun-backup", calls[4])
+        self.assertIn("--network=host", calls[4])
+        self.assertNotIn("krun.use_passt", calls[4])
         metrics = self.metrics.read_text()
         self.assertIn("nas_backup_integrity_last_run_success{application=\"immich\"} 1", metrics)
         self.assertIn(f"nas_backup_integrity_last_success_timestamp_seconds{{application=\"immich\"}} {NOW}", metrics)
@@ -329,6 +358,31 @@ class ImmichBackupTests(unittest.TestCase):
         self.assertIn("Another Immich backup", result.stderr)
         self.assertEqual(self.invocations(), [])
 
+    def test_stale_network_readiness_prevents_outbound_vm(self) -> None:
+        self.network_ready.write_text("previous-boot-id\n")
+        result = self.invoke("run")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("readiness is stale", result.stderr)
+        self.assertEqual(len(self.invocations()), 2)
+        self.assertNotIn("rclone", "\n".join(self.invocations()))
+
+    def test_missing_or_ambiguous_host_tap_manifest_prevents_outbound_vm(self) -> None:
+        self.host_tap_manifest.unlink()
+        missing = self.invoke("run")
+        self.assertNotEqual(missing.returncode, 0)
+        self.assertIn("manifest is unavailable", missing.stderr)
+        self.assertEqual(len(self.invocations()), 2)
+
+        self.podman_log.write_text("")
+        self.host_tap_manifest.write_text(
+            "immich-backup\tkrun-backup\t10.253.19.2/30\tfirst.service\n"
+            "immich-backup\tkrun-other\t10.253.20.2/30\tsecond.service\n"
+        )
+        ambiguous = self.invoke("run")
+        self.assertNotEqual(ambiguous.returncode, 0)
+        self.assertIn("exactly one manifest entry", ambiguous.stderr)
+        self.assertEqual(len(self.invocations()), 2)
+
     def test_init_never_reinitializes_nonempty_repository(self) -> None:
         repository = self.backup / "restic"
         repository.mkdir(parents=True)
@@ -337,6 +391,26 @@ class ImmichBackupTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("nonempty", result.stderr)
         self.assertEqual(self.invocations(), [])
+
+    def test_init_resumes_first_mirror_of_runner_checked_empty_repository(self) -> None:
+        repository = self.backup / "restic"
+        state = self.backup / "state"
+        repository.mkdir(parents=True)
+        state.mkdir(parents=True)
+        (repository / "config").write_text("existing")
+        (state / "local-success").write_text(f"{NOW}\n")
+
+        result = self.invoke("init")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Resuming the first mirror", result.stdout)
+        calls = self.invocations()
+        self.assertEqual(len(calls), 4)
+        self.assertIn("snapshots --json --no-lock", calls[0])
+        self.assertIn("check", calls[1])
+        self.assertIn("sync /repository", calls[2])
+        self.assertIn("check /repository", calls[3])
+        self.assertNotIn(" init", "\n".join(calls))
 
 
 if __name__ == "__main__":

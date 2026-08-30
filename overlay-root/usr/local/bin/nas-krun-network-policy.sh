@@ -5,9 +5,12 @@ set -euo pipefail
 
 READY_DIR=/run/nas-krun-network
 READY_FILE="${READY_DIR}/policy-ready"
-TAPS=("krun-51110" "krun-51120" "krun-51130" "krun-51140" "krun-51150" "krun-51160" "krun-51210" "krun-51220" "krun-51230" "krun-51240" "krun-51250" "krun-51260" "krun-51270" "krun-51310" "krun-51410" "krun-51420" "krun-51430" "krun-51440")
-GATEWAYS=("10.253.1.1/30" "10.253.2.1/30" "10.253.10.1/30" "10.253.11.1/30" "10.253.12.1/30" "10.253.13.1/30" "10.253.3.1/30" "10.253.4.1/30" "10.253.5.1/30" "10.253.6.1/30" "10.253.7.1/30" "10.253.8.1/30" "10.253.18.1/30" "10.253.9.1/30" "10.253.14.1/30" "10.253.15.1/30" "10.253.16.1/30" "10.253.17.1/30")
+HOST_TAP_NETWORK_LOCK=/run/lock/nas-host-vm-tap-network.lock
+TAPS=("krun-51110" "krun-51120" "krun-51130" "krun-51140" "krun-51150" "krun-51160" "krun-51210" "krun-51220" "krun-51230" "krun-51240" "krun-51250" "krun-51260" "krun-51270" "krun-51310" "krun-51410" "krun-51420" "krun-51430" "krun-51440" "krun-backup")
+GATEWAYS=("10.253.1.1/30" "10.253.2.1/30" "10.253.10.1/30" "10.253.11.1/30" "10.253.12.1/30" "10.253.13.1/30" "10.253.3.1/30" "10.253.4.1/30" "10.253.5.1/30" "10.253.6.1/30" "10.253.7.1/30" "10.253.8.1/30" "10.253.18.1/30" "10.253.9.1/30" "10.253.14.1/30" "10.253.15.1/30" "10.253.16.1/30" "10.253.17.1/30" "10.253.19.1/30")
 USER_UNITS=("user@51110.service" "user@51120.service" "user@51130.service" "user@51140.service" "user@51150.service" "user@51160.service" "user@51210.service" "user@51220.service" "user@51230.service" "user@51240.service" "user@51250.service" "user@51260.service" "user@51270.service" "user@51310.service" "user@51410.service" "user@51420.service" "user@51430.service" "user@51440.service")
+MANAGED_UNITS=("nas-backup-immich.service" "nas-maintain-immich-backup.service")
+HOST_TAP_LABELS=("io.samhclark.nas.host-vm-tap=immich-backup")
 
 clear_readiness() {
     rm -f "${READY_FILE}" "${READY_FILE}.tmp"
@@ -15,10 +18,54 @@ clear_readiness() {
 
 quiesce_guests() {
     clear_readiness
+    if (( ${#MANAGED_UNITS[@]} > 0 )); then
+        systemctl stop --no-block "${MANAGED_UNITS[@]}"
+    fi
     systemctl stop "${USER_UNITS[@]}"
+    for label in "${HOST_TAP_LABELS[@]}"; do
+        containers_output="$(podman ps --quiet --filter "label=${label}")" || {
+            echo "Could not enumerate host-VM containers for ${label}" >&2
+            return 1
+        }
+        containers=()
+        if [[ -n "${containers_output}" ]]; then
+            mapfile -t containers <<<"${containers_output}"
+            podman stop --time=10 "${containers[@]}"
+        fi
+    done
     for unit in "${USER_UNITS[@]}"; do
         if systemctl is-active --quiet "${unit}"; then
             echo "Refusing to remove krun network policy while ${unit} is active" >&2
+            return 1
+        fi
+    done
+    deadline=$((SECONDS + 30))
+    while (( ${#MANAGED_UNITS[@]} > 0 )); do
+        active_units=()
+        for unit in "${MANAGED_UNITS[@]}"; do
+            if systemctl is-active --quiet "${unit}"; then
+                active_units+=("${unit}")
+            fi
+        done
+        (( ${#active_units[@]} == 0 )) && break
+        if (( SECONDS >= deadline )); then
+            echo "Refusing to remove krun network policy while ${active_units[*]} is active" >&2
+            return 1
+        fi
+        sleep 1
+    done
+    exec {HOST_TAP_NETWORK_LOCK_FD}<>"${HOST_TAP_NETWORK_LOCK}"
+    if ! flock --exclusive --timeout 30 "${HOST_TAP_NETWORK_LOCK_FD}"; then
+        echo "Timed out waiting for host-VM TAP network users to stop" >&2
+        return 1
+    fi
+    for label in "${HOST_TAP_LABELS[@]}"; do
+        containers_output="$(podman ps --quiet --filter "label=${label}")" || {
+            echo "Could not verify host-VM containers for ${label}" >&2
+            return 1
+        }
+        if [[ -n "${containers_output}" ]]; then
+            echo "Refusing to remove krun network policy while ${label} is active" >&2
             return 1
         fi
     done
@@ -31,7 +78,7 @@ publish_readiness() {
     clear_readiness
 
     /usr/lib/systemd/systemd-networkd-wait-online --quiet --timeout=60 \
-        --ipv4 --interface="krun-51110:off" --interface="krun-51120:off" --interface="krun-51130:off" --interface="krun-51140:off" --interface="krun-51150:off" --interface="krun-51160:off" --interface="krun-51210:off" --interface="krun-51220:off" --interface="krun-51230:off" --interface="krun-51240:off" --interface="krun-51250:off" --interface="krun-51260:off" --interface="krun-51270:off" --interface="krun-51310:off" --interface="krun-51410:off" --interface="krun-51420:off" --interface="krun-51430:off" --interface="krun-51440:off"
+        --ipv4 --interface="krun-51110:off" --interface="krun-51120:off" --interface="krun-51130:off" --interface="krun-51140:off" --interface="krun-51150:off" --interface="krun-51160:off" --interface="krun-51210:off" --interface="krun-51220:off" --interface="krun-51230:off" --interface="krun-51240:off" --interface="krun-51250:off" --interface="krun-51260:off" --interface="krun-51270:off" --interface="krun-51310:off" --interface="krun-51410:off" --interface="krun-51420:off" --interface="krun-51430:off" --interface="krun-51440:off" --interface="krun-backup:off"
 
     for index in "${!TAPS[@]}"; do
         ip -4 -o address show dev "${TAPS[$index]}" \

@@ -38,6 +38,23 @@ def active_taps_manifest(fleet: Fleet) -> str:
     return "\n".join(lines) + "\n"
 
 
+def host_vm_taps_manifest(fleet: Fleet) -> str:
+    lines = [
+        generated_header("host VM TAPs"),
+        "# name\ttap\tguest\tmanaged-units",
+    ]
+    for tap in fleet.host_vm_taps:
+        lines.append(
+            _row(
+                tap.name,
+                tap.tap_name,
+                str(tap.tap_guest),
+                ",".join(tap.managed_units),
+            )
+        )
+    return "\n".join(lines) + "\n"
+
+
 def secrets_manifest(fleet: Fleet) -> str:
     lines = [
         generated_header("fleet secret consumers"),

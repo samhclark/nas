@@ -1,8 +1,9 @@
 [Unit]
 Description=Prune, verify, and replicate the encrypted Immich backup repository
 Documentation=https://github.com/samhclark/nas/blob/main/docs/operations/immich.md
-Requires=zfs.target sops-distribute-secrets.service nas-prepare-immich-server-storage.service nas-prepare-immich-backup-storage.service
-After=zfs.target sops-distribute-secrets.service nas-prepare-immich-server-storage.service nas-prepare-immich-backup-storage.service
+Requires=zfs.target sops-distribute-secrets.service nas-prepare-immich-server-storage.service nas-prepare-immich-backup-storage.service nas-krun-network-policy.service
+BindsTo=nas-krun-network-policy.service
+After=zfs.target sops-distribute-secrets.service nas-prepare-immich-server-storage.service nas-prepare-immich-backup-storage.service nas-krun-network-policy.service
 ConditionPathIsDirectory=/sys/module/zfs
 
 [Service]

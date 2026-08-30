@@ -119,6 +119,7 @@ class FleetManifestTests(unittest.TestCase):
             if line and not line.startswith("#")
         ]
         tap_rows = self.rows("usr/share/nas/fleet/active-taps.tsv")
+        host_tap_rows = self.rows("usr/share/nas/fleet/host-vm-taps.tsv")
 
         self.assertEqual(
             account_units,
@@ -136,6 +137,18 @@ class FleetManifestTests(unittest.TestCase):
                     f"ensure-nas-{service.host.slug}-account.service",
                 ]
                 for service in self.fleet.active_taps
+            ],
+        )
+        self.assertEqual(
+            host_tap_rows,
+            [
+                [
+                    tap.name,
+                    tap.tap_name,
+                    str(tap.tap_guest),
+                    ",".join(tap.managed_units),
+                ]
+                for tap in self.fleet.host_vm_taps
             ],
         )
 
@@ -206,6 +219,7 @@ class FleetManifestTests(unittest.TestCase):
         self.assertNotIn("read_quadlet_secret_rows", distributor)
         self.assertNotIn("QUADLET_DIR", distributor)
         self.assertIn("fleet/active-taps.tsv", diagnostics)
+        self.assertIn("fleet/host-vm-taps.tsv", diagnostics)
         self.assertNotIn("krun-51110 krun-51120", diagnostics)
 
     def test_selinux_labeling_has_one_owner_per_storage_class(self):

@@ -175,6 +175,63 @@ class KrunTapNetworkTests(unittest.TestCase):
         self.assertIn("RapidCommit=yes", network)
         self.assertIn("IPv4RouteLocalnet=yes", network)
 
+    def test_root_owned_backup_tap_uses_the_generated_routed_policy(self):
+        config = (
+            REPO / "overlay-root/usr/lib/systemd/network/80-krun-backup.netdev"
+        ).read_text()
+        network = (
+            REPO / "overlay-root/usr/lib/systemd/network/80-krun-backup.network"
+        ).read_text()
+        manifest = (
+            REPO / "overlay-root/usr/share/nas/fleet/host-vm-taps.tsv"
+        ).read_text()
+
+        self.assertIn("Name=krun-backup", config)
+        self.assertIn("User=root", config)
+        self.assertIn("Group=root", config)
+        self.assertIn("VNetHeader=yes", config)
+        self.assertIn("Address=10.253.19.1/30", network)
+        self.assertIn("PoolOffset=2", network)
+        self.assertIn("RapidCommit=yes", network)
+        self.assertIn('"krun-backup"', POLICY_SCRIPT)
+        self.assertIn('"10.253.19.1/30"', POLICY_SCRIPT)
+        self.assertIn(
+            "immich-backup\tkrun-backup\t10.253.19.2/30\t"
+            "nas-backup-immich.service,nas-maintain-immich-backup.service",
+            manifest,
+        )
+        self.assertIn(
+            'iifname "krun-backup" ip saddr != 10.253.19.2 drop', FILTER
+        )
+        outbound_rule = next(
+            line
+            for line in FILTER.splitlines()
+            if 'iifname "krun-backup" ip saddr 10.253.19.2' in line
+            and 'oifname !=' in line
+            and line.endswith(" accept")
+        )
+        self.assertIn('oifname != "krun-backup"', outbound_rule)
+        self.assertIn("ip saddr 10.253.19.2", NAT)
+        self.assertIn("masquerade", NAT)
+        self.assertNotIn("user@0.service", POLICY_SCRIPT)
+
+    def test_policy_quiesces_root_owned_tap_vms_before_flush(self):
+        self.assertIn(
+            'HOST_TAP_LABELS=("io.samhclark.nas.host-vm-tap=immich-backup")',
+            POLICY_SCRIPT,
+        )
+        self.assertIn('podman stop --time=10 "${containers[@]}"', POLICY_SCRIPT)
+        self.assertIn('systemctl stop --no-block "${MANAGED_UNITS[@]}"', POLICY_SCRIPT)
+        self.assertIn('flock --exclusive --timeout 30', POLICY_SCRIPT)
+        self.assertLess(
+            POLICY_SCRIPT.index("podman stop --time=10"),
+            POLICY_SCRIPT.index("flock --exclusive --timeout 30"),
+        )
+        self.assertLess(
+            POLICY_SCRIPT.index("flock --exclusive --timeout 30"),
+            POLICY_SCRIPT.index("nft flush ruleset"),
+        )
+
     def test_networkd_waits_for_tap_owner_accounts(self):
         for service in self.load_configs():
             self.assertIn(

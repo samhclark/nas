@@ -70,10 +70,14 @@ storage:
           deadline=$((SECONDS + 30))
           while true; do
               missing=()
+              while IFS=$'\t' read -r name tap _; do
+                  [[ -z "${name}" || "${name}" == \#* ]] && continue
+                  [[ -e "/sys/class/net/${tap}" ]] || missing+=("${tap}")
+              done < /usr/share/nas/fleet/active-taps.tsv
               while IFS=$'\t' read -r tap _; do
                   [[ -z "${tap}" || "${tap}" == \#* ]] && continue
                   [[ -e "/sys/class/net/${tap}" ]] || missing+=("${tap}")
-              done < /usr/share/nas/fleet/active-taps.tsv
+              done < /usr/share/nas/fleet/host-vm-taps.tsv
               ((${#missing[@]} == 0)) && break
               ((SECONDS < deadline))
               sleep 1

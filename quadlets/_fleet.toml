@@ -18,6 +18,15 @@ secrets = [
   "immich-backup-b2-s3-endpoint",
 ]
 
+[[host-vm-taps]]
+name = "immich-backup"
+interface = "krun-backup"
+ipv4 = "10.253.19.2/30"
+managed-units = [
+  "nas-backup-immich.service",
+  "nas-maintain-immich-backup.service",
+]
+
 [egress.mullvad]
 interface = "wg-arr"
 address = "10.72.38.9/32"

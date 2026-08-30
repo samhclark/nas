@@ -67,8 +67,11 @@ isolated-rehearsal evidence are recorded in
 Backup control-plane provisioning completed on 2026-08-30: the private B2
 bucket, `immich/restic/` lifecycle rule, prefix-scoped application key, all five
 real SOPS values, and external escrow of the restic encryption password are in
-place. Deployment, explicit repository initialization, the first backup, and
-the direct-B2 restore rehearsal remain pending.
+place. The image was deployed and the local restic repository was explicitly
+initialized and structurally checked successfully. Its first mirror stopped
+before contacting B2 when crun could not start the former passt backend. The
+dedicated root-owned TAP correction is pending deployment; the first completed
+B2 backup and direct-B2 restore rehearsal remain pending.
 
 ## Capacity gate before a large import
 

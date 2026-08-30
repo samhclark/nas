@@ -10,16 +10,19 @@ export SYSTEMD_COLORS=0
 export SYSTEMD_PAGER=cat
 
 TAP_MANIFEST=/usr/share/nas/fleet/active-taps.tsv
+HOST_TAP_MANIFEST=/usr/share/nas/fleet/host-vm-taps.tsv
 
 if (( EUID != 0 )); then
     echo "Run this script as root (for example: sudo bash $0)." >&2
     exit 1
 fi
 
-if [[ ! -r "${TAP_MANIFEST}" ]]; then
-    echo "Fleet manifest is missing: ${TAP_MANIFEST}" >&2
-    exit 1
-fi
+for manifest in "${TAP_MANIFEST}" "${HOST_TAP_MANIFEST}"; do
+    if [[ ! -r "${manifest}" ]]; then
+        echo "Fleet manifest is missing: ${manifest}" >&2
+        exit 1
+    fi
+done
 
 TAPS=()
 USER_UNITS=()
@@ -30,6 +33,10 @@ while IFS=$'\t' read -r tap user_unit account_unit; do
     USER_UNITS+=("${user_unit}")
     ACCOUNT_UNITS+=("${account_unit}")
 done < "${TAP_MANIFEST}"
+while IFS=$'\t' read -r name tap _; do
+    [[ "${name}" == \#* ]] && continue
+    TAPS+=("${tap}")
+done < "${HOST_TAP_MANIFEST}"
 
 ACCOUNT_JOURNAL_ARGS=()
 USER_JOURNAL_ARGS=()

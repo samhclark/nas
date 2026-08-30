@@ -47,6 +47,7 @@ EXEC_RE = re.compile(
 MAX_SUBID_START = 2**32 - SUBID_COUNT
 MAX_LINUX_ID = 2**32 - 1
 LINUX_INTERFACE_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]{1,15}$")
+SYSTEMD_SERVICE_RE = re.compile(r"^[A-Za-z0-9_.@-]+\.service$")
 
 
 class Protocol(str, Enum):
@@ -93,6 +94,36 @@ class HostSecretConsumer:
 
     name: str
     secrets: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class HostVmTap:
+    """A root-owned routed TAP used by short-lived host-launched microVMs."""
+
+    name: str
+    interface: str
+    ipv4: ipaddress.IPv4Interface
+    managed_units: tuple[str, ...]
+
+    @property
+    def tap_name(self) -> str:
+        return self.interface
+
+    @property
+    def tap_guest(self) -> ipaddress.IPv4Interface:
+        return self.ipv4
+
+    @property
+    def tap_gateway(self) -> ipaddress.IPv4Interface:
+        gateway = ipaddress.ip_interface(
+            f"{self.ipv4.network.network_address + 1}/{self.ipv4.network.prefixlen}"
+        )
+        assert isinstance(gateway, ipaddress.IPv4Interface)
+        return gateway
+
+    @property
+    def runtime_label(self) -> str:
+        return f"io.samhclark.nas.host-vm-tap={self.name}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -305,6 +336,7 @@ class Fleet:
     resources: tuple[FleetStorageSpec, ...] = ()
     egress: MullvadEgress | None = None
     host_secret_consumers: tuple[HostSecretConsumer, ...] = ()
+    host_vm_taps: tuple[HostVmTap, ...] = ()
 
     def __post_init__(self) -> None:
         if any(not isinstance(service, Service) for service in self.services):
@@ -323,6 +355,7 @@ class Fleet:
         host_secret_consumers: (
             list[HostSecretConsumer] | tuple[HostSecretConsumer, ...]
         ) = (),
+        host_vm_taps: list[HostVmTap] | tuple[HostVmTap, ...] = (),
     ) -> Fleet:
         return cls(
             tuple(services),
@@ -330,11 +363,16 @@ class Fleet:
             tuple(resources),
             egress,
             tuple(host_secret_consumers),
+            tuple(host_vm_taps),
         )
 
     @property
     def active_taps(self) -> tuple[Service, ...]:
         return tuple(service for service in self.services if service.active_tap)
+
+    @property
+    def routed_taps(self) -> tuple[Service | HostVmTap, ...]:
+        return (*self.active_taps, *self.host_vm_taps)
 
     @property
     def taps_by_name(self) -> Mapping[str, Service]:
@@ -664,6 +702,51 @@ def _validate_host_secret_consumers(fleet: Fleet) -> None:
             if not SECRET_NAME_RE.fullmatch(secret):
                 _fail(secret_path, f"must match {SECRET_NAME_RE.pattern}")
         seen_consumers.add(consumer.name)
+
+
+def _validate_host_vm_taps(fleet: Fleet) -> None:
+    if not isinstance(fleet.host_vm_taps, tuple):
+        _fail("fleet.host-vm-taps", "must contain only HostVmTap instances")
+    seen_names: set[str] = set()
+    seen_interfaces: set[str] = set()
+    for index, tap in enumerate(fleet.host_vm_taps, start=1):
+        path = f"fleet.host-vm-taps[{index}]"
+        if not isinstance(tap, HostVmTap):
+            _fail(path, "must contain only HostVmTap instances")
+        _validate_string(tap.name, f"{path}.name")
+        if not NAME_RE.fullmatch(tap.name):
+            _fail(f"{path}.name", f"must match {NAME_RE.pattern}")
+        if tap.name in seen_names:
+            _fail(path, f"duplicate host VM TAP name {tap.name!r}")
+        _validate_string(tap.interface, f"{path}.interface")
+        if (
+            not LINUX_INTERFACE_NAME_RE.fullmatch(tap.interface)
+            or not tap.interface.startswith("krun-")
+        ):
+            _fail(
+                f"{path}.interface",
+                "must be a valid Linux interface name beginning with 'krun-'",
+            )
+        if tap.interface in seen_interfaces:
+            _fail(path, f"duplicate host VM TAP interface {tap.interface!r}")
+        if not isinstance(tap.ipv4, ipaddress.IPv4Interface):
+            _fail(f"{path}.ipv4", "must be an IPv4 interface address")
+        if tap.ipv4.network.prefixlen != 30:
+            _fail(f"{path}.ipv4", "must use a /30 network")
+        expected_guest = tap.ipv4.network.network_address + 2
+        if tap.ipv4.ip != expected_guest:
+            _fail(f"{path}.ipv4", "must use the second guest address in its /30")
+        if not tap.managed_units:
+            _fail(f"{path}.managed-units", "must contain at least one service")
+        if len(set(tap.managed_units)) != len(tap.managed_units):
+            _fail(f"{path}.managed-units", "contains duplicates")
+        for unit_index, unit in enumerate(tap.managed_units, start=1):
+            unit_path = f"{path}.managed-units[{unit_index}]"
+            _validate_string(unit, unit_path)
+            if not SYSTEMD_SERVICE_RE.fullmatch(unit):
+                _fail(unit_path, "must be a systemd .service unit name")
+        seen_names.add(tap.name)
+        seen_interfaces.add(tap.interface)
 
 
 def _validate_endpoints(service: Service) -> None:
@@ -1063,6 +1146,7 @@ def _validate_fleet(fleet: Fleet) -> None:
     services = fleet.services
     _validate_fleet_groups(fleet)
     _validate_host_secret_consumers(fleet)
+    _validate_host_vm_taps(fleet)
     if fleet.egress is not None:
         _validate_mullvad_egress(fleet.egress)
     if any(not isinstance(resource, FleetZfsStorage) for resource in fleet.resources):
@@ -1245,6 +1329,20 @@ def _validate_fleet(fleet: Fleet) -> None:
             for consumer in endpoint.consumers:
                 if consumer not in tap_names:
                     _fail(name, f"unknown TAP consumer service {consumer!r}")
+
+    service_tap_interfaces = {service.tap_name for service in fleet.active_taps}
+    for tap in fleet.host_vm_taps:
+        if tap.name in service_names:
+            _fail("fleet", f"host VM TAP name {tap.name!r} conflicts with a service")
+        if tap.interface in service_tap_interfaces:
+            _fail("fleet", f"host VM TAP interface {tap.interface!r} conflicts with a service TAP")
+        network = tap.ipv4.network
+        if network in tap_networks:
+            _fail(
+                "fleet",
+                f"host VM TAP subnet {network} is also used by {tap_networks[network]}",
+            )
+        tap_networks[network] = f"host VM TAP {tap.name}"
 
     by_name = {service.info.name: service for service in services}
     for service in services:

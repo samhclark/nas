@@ -334,15 +334,25 @@ cleanup() {
 }
 
 initialize_repository() {
+    local snapshots_json
     "${PREPARE_STORAGE_BIN}"
     require_capacity
     require_restic_secret
     require_b2_secrets
     if [[ -n "$(/usr/bin/find "${REPOSITORY}" -mindepth 1 -maxdepth 1 -print -quit)" ]]; then
-        printf 'Refusing to initialize a nonempty local restic repository path.\n' >&2
-        return 1
+        if [[ ! -f "${REPOSITORY}/config" || ! -s "${STATE_DIR}/local-success" ]]; then
+            printf 'Refusing to initialize a nonempty local restic repository path.\n' >&2
+            return 1
+        fi
+        snapshots_json="$(restic_vm snapshots --json --no-lock)"
+        if [[ "$("${JQ_BIN}" -r 'length' <<<"${snapshots_json}")" != 0 ]]; then
+            printf 'Refusing to resume initialization of a repository containing snapshots.\n' >&2
+            return 1
+        fi
+        printf 'Resuming the first mirror of the initialized empty repository.\n'
+    else
+        restic_vm init
     fi
-    restic_vm init
     restic_vm check
     record_success local-success
     mirror_repository

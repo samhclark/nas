@@ -329,6 +329,8 @@ It also emits purpose-specific consumer manifests:
 - `fleet/account-units.list`: every declared identity, including disabled
   services;
 - `fleet/active-taps.tsv`: active TAPs and exact user/account units;
+- `fleet/host-vm-taps.tsv`: root-owned TAPs for transient host-launched VMs,
+  their guest addresses, and managed system units;
 - `fleet/secrets.tsv`: every declared secret route, including disabled
   services;
 - `fleet/assets.list`: every declared image asset tree.

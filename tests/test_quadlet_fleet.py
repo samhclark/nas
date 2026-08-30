@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+import ipaddress
 from dataclasses import replace
 from pathlib import Path
 
@@ -11,8 +12,9 @@ from quadletgen.compiler import compile_fleet
 from quadletgen.model import (
     ConfigError,
     Fleet,
+    HostVmTap,
 )
-from quadletgen.parser import load_service
+from quadletgen.parser import load_host_vm_taps, load_service
 from tests.quadlet_test_support import REPO, current_fleet, service_toml
 
 
@@ -84,6 +86,60 @@ class FleetValidationTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(ConfigError, "ranges overlap"):
                 Fleet.build([first, overlapping])
+
+    def test_host_vm_tap_is_typed_and_cannot_overlap_service_network(self):
+        with tempfile.TemporaryDirectory(dir=REPO) as directory_name:
+            directory = Path(directory_name)
+            fleet_path = directory / "_fleet.toml"
+            fleet_path.write_text(
+                '''[[host-vm-taps]]
+name = "immich-backup"
+interface = "krun-backup"
+ipv4 = "10.253.19.2/30"
+managed-units = ["nas-backup-immich.service"]
+'''
+            )
+            taps = load_host_vm_taps(fleet_path)
+            self.assertEqual(taps[0].tap_name, "krun-backup")
+            self.assertEqual(str(taps[0].tap_gateway), "10.253.19.1/30")
+
+            service = self.write(
+                directory,
+                "service.toml",
+                service_toml(
+                    container=(
+                        'network = "host"\n\n'
+                        "[[container.endpoints]]\n"
+                        'name = "http"\nport = 8080'
+                    ),
+                    krun=(
+                        "enabled = true\ncpus = 1\nram-mib = 128\n"
+                        'network = "tap"\n'
+                        'ipv4 = "10.253.19.2/30"\n'
+                        'probe-endpoint = "http"'
+                    ),
+                ),
+            )
+            with self.assertRaisesRegex(ConfigError, "host VM TAP subnet"):
+                Fleet.build([service], host_vm_taps=taps)
+
+    def test_host_vm_tap_rejects_invalid_interface_and_guest_address(self):
+        invalid_interface = HostVmTap(
+            name="backup",
+            interface="tap-backup",
+            ipv4=ipaddress.ip_interface("10.253.19.2/30"),
+            managed_units=("nas-backup.service",),
+        )
+        with self.assertRaisesRegex(ConfigError, "beginning with 'krun-'"):
+            replace(current_fleet(), host_vm_taps=(invalid_interface,))
+
+        invalid_address = replace(
+            invalid_interface,
+            interface="krun-backup",
+            ipv4=ipaddress.ip_interface("10.253.19.1/30"),
+        )
+        with self.assertRaisesRegex(ConfigError, "second guest address"):
+            replace(current_fleet(), host_vm_taps=(invalid_address,))
 
     def test_application_roles_are_unique_within_an_application(self):
         with tempfile.TemporaryDirectory(dir=REPO) as directory_name:

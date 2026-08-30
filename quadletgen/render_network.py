@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from .headers import generated_header
-from .model import Fleet, MullvadEgress, Service
+from .model import Fleet, HostVmTap, MullvadEgress, Service
+
+
+NetworkTap = Service | HostVmTap
 
 
 KRUN_DNS_SERVERS = ("100.100.100.100",)
@@ -13,25 +16,26 @@ def fleet_header(name: str) -> str:
     return generated_header(name)
 
 
-def networkd_netdev(service: Service) -> str:
-    return f"""{_service_header(service)}
+def networkd_netdev(tap: NetworkTap) -> str:
+    owner = tap.host.username if isinstance(tap, Service) else "root"
+    return f"""{_tap_header(tap)}
 [NetDev]
-Name={service.tap_name}
+Name={tap.tap_name}
 Kind=tap
 
 [Tap]
-User={service.host.username}
-Group={service.host.username}
+User={owner}
+Group={owner}
 VNetHeader=yes
 """
 
 
-def networkd_network(service: Service, fleet: Fleet) -> str:
-    gateway = service.tap_gateway
+def networkd_network(tap: NetworkTap, fleet: Fleet) -> str:
+    gateway = tap.tap_gateway
     lines = [
-        _service_header(service),
+        _tap_header(tap),
         "[Match]",
-        f"Name={service.tap_name}",
+        f"Name={tap.tap_name}",
         "",
         "[Link]",
         "RequiredForOnline=no",
@@ -56,10 +60,11 @@ def networkd_network(service: Service, fleet: Fleet) -> str:
         "EmitRouter=yes",
         f"Router={gateway.ip}",
     ]
-    if getattr(service.krun, "egress", None) == "mullvad":
+    krun = tap.krun if isinstance(tap, Service) else None
+    if getattr(krun, "egress", None) == "mullvad":
         if fleet.egress is None:
             raise ValueError("Mullvad-selected TAP has no fleet egress")
-        guest = f"{service.tap_guest.ip}/32"
+        guest = f"{tap.tap_guest.ip}/32"
         for priority, destination in enumerate(
             ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10"),
             start=100,
@@ -145,9 +150,10 @@ unmanaged-devices={unmanaged}
 
 
 def nft_filter(fleet: Fleet) -> str:
-    taps = fleet.active_taps
+    taps = fleet.routed_taps
+    service_taps = fleet.active_taps
     selected = tuple(
-        service for service in taps
+        service for service in service_taps
         if getattr(service.krun, "egress", None) == "mullvad"
     )
     egress_interface = None
@@ -164,7 +170,6 @@ def nft_filter(fleet: Fleet) -> str:
     by_name = fleet.taps_by_name
     lines = [fleet_header("TAP fleet filter"), "chain nas_krun_input {"]
     for service in taps:
-        tap = service.tap_spec
         lines.append(
             f'    iifname "{service.tap_name}" udp sport 68 udp dport 67 accept'
         )
@@ -176,7 +181,8 @@ def nft_filter(fleet: Fleet) -> str:
             f'    iifname "{service.tap_name}" ip saddr '
             f"{service.tap_guest.ip} ct state established,related accept"
         )
-        for host_port in tap.host_access:
+        host_access = service.tap_spec.host_access if isinstance(service, Service) else ()
+        for host_port in host_access:
             lines.append(
                 f'    iifname "{service.tap_name}" ip saddr '
                 f"{service.tap_guest.ip} ip daddr {service.tap_gateway.ip} "
@@ -213,8 +219,8 @@ def nft_filter(fleet: Fleet) -> str:
                 'ip daddr 100.100.100.100 oifname "tailscale0" '
                 f"{protocol} dport 53 ct state established,related accept"
             )
-        for destination in taps:
-            if destination.info.name == service.info.name:
+        for destination in service_taps:
+            if destination.tap_name == service.tap_name:
                 continue
             lines.append(
                 f'    iifname "{service.tap_name}" ip saddr {guest} '
@@ -226,7 +232,7 @@ def nft_filter(fleet: Fleet) -> str:
             "ct state established,related drop"
         )
     lines.append("    ct state established,related accept")
-    for destination in taps:
+    for destination in service_taps:
         ports_by_consumer: dict[str, list[int]] = {}
         for endpoint in destination.container.endpoints:
             for consumer in endpoint.consumers:
@@ -241,7 +247,7 @@ def nft_filter(fleet: Fleet) -> str:
                 f"ip daddr {destination.tap_guest.ip} "
                 f"tcp dport {{ {rendered_ports} }} accept"
             )
-    for service in taps:
+    for service in service_taps:
         for endpoint in service.container.endpoints:
             if str(endpoint.host_address) != "0.0.0.0":
                 continue
@@ -252,7 +258,7 @@ def nft_filter(fleet: Fleet) -> str:
             )
     for service in taps:
         guest = service.tap_guest.ip
-        if getattr(service.krun, "egress", None) == "mullvad":
+        if _tap_egress(service) == "mullvad":
             lines += [
                 f'    iifname "{service.tap_name}" ip saddr {guest} '
                 'ip daddr 100.100.100.100 oifname "tailscale0" '
@@ -307,11 +313,19 @@ def networkd_dependencies(fleet: Fleet) -> str:
 
 
 def network_policy_script(fleet: Fleet) -> str:
-    taps = fleet.active_taps
+    taps = fleet.routed_taps
     tap_names = " ".join(f'"{service.tap_name}"' for service in taps)
     gateways = " ".join(f'"{service.tap_gateway}"' for service in taps)
     user_units = " ".join(
-        f'"user@{service.host.uid}.service"' for service in taps
+        f'"user@{service.host.uid}.service"' for service in fleet.active_taps
+    )
+    managed_units = " ".join(
+        f'"{unit}"'
+        for tap in fleet.host_vm_taps
+        for unit in tap.managed_units
+    )
+    host_tap_labels = " ".join(
+        f'"{tap.runtime_label}"' for tap in fleet.host_vm_taps
     )
     wait_interfaces = " ".join(
         f'--interface="{service.tap_name}:off"' for service in taps
@@ -323,9 +337,12 @@ set -euo pipefail
 
 READY_DIR=/run/nas-krun-network
 READY_FILE="${{READY_DIR}}/policy-ready"
+HOST_TAP_NETWORK_LOCK=/run/lock/nas-host-vm-tap-network.lock
 TAPS=({tap_names})
 GATEWAYS=({gateways})
 USER_UNITS=({user_units})
+MANAGED_UNITS=({managed_units})
+HOST_TAP_LABELS=({host_tap_labels})
 
 clear_readiness() {{
     rm -f "${{READY_FILE}}" "${{READY_FILE}}.tmp"
@@ -333,10 +350,54 @@ clear_readiness() {{
 
 quiesce_guests() {{
     clear_readiness
+    if (( ${{#MANAGED_UNITS[@]}} > 0 )); then
+        systemctl stop --no-block "${{MANAGED_UNITS[@]}}"
+    fi
     systemctl stop "${{USER_UNITS[@]}}"
+    for label in "${{HOST_TAP_LABELS[@]}}"; do
+        containers_output="$(podman ps --quiet --filter "label=${{label}}")" || {{
+            echo "Could not enumerate host-VM containers for ${{label}}" >&2
+            return 1
+        }}
+        containers=()
+        if [[ -n "${{containers_output}}" ]]; then
+            mapfile -t containers <<<"${{containers_output}}"
+            podman stop --time=10 "${{containers[@]}}"
+        fi
+    done
     for unit in "${{USER_UNITS[@]}}"; do
         if systemctl is-active --quiet "${{unit}}"; then
             echo "Refusing to remove krun network policy while ${{unit}} is active" >&2
+            return 1
+        fi
+    done
+    deadline=$((SECONDS + 30))
+    while (( ${{#MANAGED_UNITS[@]}} > 0 )); do
+        active_units=()
+        for unit in "${{MANAGED_UNITS[@]}}"; do
+            if systemctl is-active --quiet "${{unit}}"; then
+                active_units+=("${{unit}}")
+            fi
+        done
+        (( ${{#active_units[@]}} == 0 )) && break
+        if (( SECONDS >= deadline )); then
+            echo "Refusing to remove krun network policy while ${{active_units[*]}} is active" >&2
+            return 1
+        fi
+        sleep 1
+    done
+    exec {{HOST_TAP_NETWORK_LOCK_FD}}<>"${{HOST_TAP_NETWORK_LOCK}}"
+    if ! flock --exclusive --timeout 30 "${{HOST_TAP_NETWORK_LOCK_FD}}"; then
+        echo "Timed out waiting for host-VM TAP network users to stop" >&2
+        return 1
+    fi
+    for label in "${{HOST_TAP_LABELS[@]}}"; do
+        containers_output="$(podman ps --quiet --filter "label=${{label}}")" || {{
+            echo "Could not verify host-VM containers for ${{label}}" >&2
+            return 1
+        }}
+        if [[ -n "${{containers_output}}" ]]; then
+            echo "Refusing to remove krun network policy while ${{label}} is active" >&2
             return 1
         fi
     done
@@ -433,9 +494,10 @@ def nftables_policy_dropin() -> str:
 
 
 def nft_nat(fleet: Fleet) -> str:
-    taps = fleet.active_taps
+    taps = fleet.routed_taps
+    service_taps = fleet.active_taps
     selected = tuple(
-        service for service in taps
+        service for service in service_taps
         if getattr(service.krun, "egress", None) == "mullvad"
     )
     egress_interface = None
@@ -451,7 +513,7 @@ def nft_nat(fleet: Fleet) -> str:
     )
     prerouting = []
     output = []
-    for service in taps:
+    for service in service_taps:
         guest = service.tap_guest.ip
         for endpoint in service.container.endpoints:
             if endpoint.host_address is None or endpoint.host_port is None:
@@ -494,7 +556,7 @@ def nft_nat(fleet: Fleet) -> str:
         "    chain postrouting {",
         "        type nat hook postrouting priority srcnat; policy accept;",
     ]
-    for service in taps:
+    for service in service_taps:
         if any(
             endpoint.publication is not None
             for endpoint in service.container.endpoints
@@ -506,7 +568,7 @@ def nft_nat(fleet: Fleet) -> str:
             )
     for service in taps:
         guest = service.tap_guest.ip
-        if getattr(service.krun, "egress", None) == "mullvad":
+        if _tap_egress(service) == "mullvad":
             lines += [
                 f'        ip saddr {guest} ip daddr 100.100.100.100 '
                 'oifname "tailscale0" masquerade',
@@ -522,5 +584,13 @@ def nft_nat(fleet: Fleet) -> str:
     return "\n".join(lines)
 
 
-def _service_header(service: Service) -> str:
-    return generated_header(service.source.name)
+def _tap_header(tap: NetworkTap) -> str:
+    if isinstance(tap, Service):
+        return generated_header(tap.source.name)
+    return generated_header(f"_fleet.toml host VM TAP {tap.name}")
+
+
+def _tap_egress(tap: NetworkTap) -> str | None:
+    if not isinstance(tap, Service):
+        return None
+    return getattr(tap.krun, "egress", None)

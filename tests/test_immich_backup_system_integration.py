@@ -198,8 +198,22 @@ class ImmichBackupSystemIntegrationTests(unittest.TestCase):
         ):
             self.assertIn(argument, runtime)
         self.assertIn("network_arguments=(--network=none)", runtime)
-        self.assertIn("--annotation=krun.use_passt=1", runtime)
-        self.assertNotIn("--network=host", runtime)
+        self.assertIn('--annotation="krun.tap_name=${tap_name}"', runtime)
+        self.assertIn("/usr/share/nas/fleet/host-vm-taps.tsv", runtime)
+        self.assertIn('/usr/bin/flock --shared "${network_lock_fd}"', runtime)
+        self.assertNotIn("NAS_BACKUP_TAP_NAME", runtime)
+        self.assertIn("--network=host", runtime)
+        self.assertIn('--device="${NAS_BACKUP_TUN_DEVICE:-/dev/net/tun}"', runtime)
+        self.assertNotIn("krun.use_passt", runtime)
+
+        for name in (
+            "nas-backup-immich.service",
+            "nas-maintain-immich-backup.service",
+        ):
+            unit = (OVERLAY / "etc/systemd/system" / name).read_text()
+            self.assertIn("Requires=", unit)
+            self.assertIn("nas-krun-network-policy.service", unit)
+            self.assertIn("BindsTo=nas-krun-network-policy.service", unit)
 
     def test_alerts_cover_freshness_failures_integrity_and_capacity(self):
         alerts = (

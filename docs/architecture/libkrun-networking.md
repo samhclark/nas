@@ -6,12 +6,20 @@ Every active libkrun service has one root-managed TAP and one routed IPv4
 `/30`. The guest uses its ordinary network stack; the host kernel owns DHCP,
 routing, filtering, publication, and outbound NAT.
 
+Short-lived host-launched microVMs may use a separately declared root-owned
+TAP. Immich backup replication uses `krun-backup`, with guest
+`10.253.19.2/30`; it has outbound NAT but no host access, publication, or
+inter-service edge. It is persistent host network infrastructure even though
+each rclone or remote-restic guest is disposable.
+
 No Podman publisher, pasta, passt, gvproxy, low-port sysctl, or userspace TCP
 terminator is part of the production service data path.
 
 ## Declarative source
 
-`quadlets/*.toml` is authoritative:
+`quadlets/*.toml` is authoritative. Service TAPs are declared in their service
+files; root-owned host-VM TAPs are declared as `[[host-vm-taps]]` in
+`_fleet.toml`:
 
 - `[krun].ipv4` assigns the guest address; the first usable address is the host
   gateway.
@@ -41,6 +49,11 @@ For each active service the compiler emits:
 - `AddDevice=/dev/net/tun` and `Annotation=krun.tap_name=...` in its Quadlet;
 - stable `*.krun` peer names;
 - nftables anti-spoofing, declared ingress, host publication, and outbound NAT.
+
+For each host-VM TAP it emits the same networkd DHCP, readiness, anti-spoofing,
+TAP-exclusion, and outbound-NAT policy, with ownership fixed to root. Host-VM
+TAPs remain outside rootless account manifests, user managers, peer hostnames,
+and endpoint-consumer policy.
 
 NetworkManager ignores both `krun-*` and `wg-arr`; systemd-networkd owns those
 generated interfaces. The host-side Mullvad interface is the separate,
@@ -105,7 +118,7 @@ publication topology; it is not a WAN exposure contract.
 publishes readiness only after:
 
 1. every service identity exists;
-2. networkd has configured every active TAP and gateway;
+2. networkd has configured every active service and host-VM TAP and gateway;
 3. the required nftables chains exist.
 
 Only then does it start the dedicated service user managers. Each TAP Quadlet
@@ -121,8 +134,10 @@ across Podman, conmon, and libkrun; do not infer that relationship in the
 renderer without that evidence.
 
 Stopping networkd or nftables first removes readiness and stops the service
-user managers. The nftables shutdown drop-in refuses to flush policy while a
-guest manager remains active.
+user managers. Root backup units bind to this boundary, and labeled transient
+host-VM containers are stopped before policy removal, including containers
+started by a direct operator command. The nftables shutdown drop-in refuses to
+flush policy while any managed guest remains active.
 
 Do not weaken this into TAP-exists checks or direct cross-manager service
 dependencies.

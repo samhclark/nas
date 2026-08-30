@@ -14,6 +14,7 @@ from .parser import (
     load_fleet_egress,
     load_fleet_storage,
     load_host_secret_consumers,
+    load_host_vm_taps,
     load_service,
 )
 from .secrets import verify_sops
@@ -48,6 +49,11 @@ def run(repo: Path, *, check: bool = False) -> int:
         ),
         host_secret_consumers=(
             load_host_secret_consumers(fleet_config_path)
+            if fleet_config_path.exists()
+            else ()
+        ),
+        host_vm_taps=(
+            load_host_vm_taps(fleet_config_path)
             if fleet_config_path.exists()
             else ()
         ),

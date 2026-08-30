@@ -17,6 +17,7 @@ from .model import (
     Endpoint,
     FleetGroup,
     HostSecretConsumer,
+    HostVmTap,
     HostIdentity,
     KrunNetwork,
     KrunPasst,
@@ -599,8 +600,59 @@ def _load_fleet_tables(toml_path: Path) -> dict[str, object]:
     return _table(
         raw,
         name,
-        {"groups", "resources", "egress", "host-secret-consumers"},
+        {
+            "groups",
+            "resources",
+            "egress",
+            "host-secret-consumers",
+            "host-vm-taps",
+        },
     )
+
+
+def load_host_vm_taps(toml_path: Path) -> tuple[HostVmTap, ...]:
+    name = toml_path.name
+    top = _load_fleet_tables(toml_path)
+    raw = top.get("host-vm-taps", [])
+    path = f"{name}: [[host-vm-taps]]"
+    if not isinstance(raw, list):
+        _fail(path, "must be an array of tables")
+    result = []
+    for index, item in enumerate(raw, start=1):
+        item_path = f"{path}[{index}]"
+        table = _table(
+            item,
+            item_path,
+            {"name", "interface", "ipv4", "managed-units"},
+        )
+        ipv4_text = _string(
+            _required(table, "ipv4", item_path),
+            f"{item_path}.ipv4",
+        )
+        try:
+            ipv4 = ipaddress.ip_interface(ipv4_text)
+        except ValueError:
+            _fail(f"{item_path}.ipv4", "must be an IPv4 interface address")
+        if not isinstance(ipv4, ipaddress.IPv4Interface):
+            _fail(f"{item_path}.ipv4", "must be an IPv4 interface address")
+        result.append(
+            HostVmTap(
+                name=_string(
+                    _required(table, "name", item_path),
+                    f"{item_path}.name",
+                ),
+                interface=_string(
+                    _required(table, "interface", item_path),
+                    f"{item_path}.interface",
+                ),
+                ipv4=ipv4,
+                managed_units=_string_array(
+                    _required(table, "managed-units", item_path),
+                    f"{item_path}.managed-units",
+                ),
+            )
+        )
+    return tuple(result)
 
 
 def load_host_secret_consumers(

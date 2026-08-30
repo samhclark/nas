@@ -1,9 +1,12 @@
 # Application backup and replication design
 
-Status: implemented and provisioned for Immich as of 2026-08-30; deployment,
-first backup, and restore validation remain pending. The implementation remains
-deliberately application-specific; this document does not define a generic
-backup schema or authorize arbitrary backup hooks in service TOML.
+Status: implemented, provisioned, and deployed for Immich as of 2026-08-30.
+The local repository was initialized and structurally checked successfully;
+the first B2 mirror exposed the rejected passt networking path, and the
+root-owned TAP correction is pending deployment. First backup and restore
+validation remain pending. The implementation remains deliberately
+application-specific; this document does not define a generic backup schema or
+authorize arbitrary backup hooks in service TOML.
 
 ## Recovery boundary
 
@@ -56,12 +59,14 @@ but every application has an independent repository, credential, schedule, and
 recovery procedure. Immich owns `immich/restic/`. Future Paperless work must
 use its own prefix and must not broaden the Immich credential.
 
-A pinned rclone 1.74.0 image runs in a separate outbound-enabled libkrun guest.
-It receives the encrypted local repository read-only plus only the Immich B2
-credential, bucket, and S3 endpoint. It never receives the restic password or
-the photo-library mount. It synchronizes the complete repository, excluding
-restic lock files, with checksum comparison, `--delete-after`, and a 5 MiB/s
-upload limit. Local and B2 repository bytes are compared after every sync.
+A pinned rclone 1.74.0 image runs in a separate libkrun guest on the dedicated
+root-owned `krun-backup` TAP (`10.253.19.2/30`). The generated host policy gives
+that TAP DHCP, anti-spoofing, outbound NAT, and no inbound, host, or inter-TAP
+access. The guest receives the encrypted local repository read-only plus only
+the Immich B2 credential, bucket, and S3 endpoint. It never receives the restic
+password or the photo-library mount. It synchronizes the complete repository,
+excluding restic lock files, with checksum comparison, `--delete-after`, and a
+5 MiB/s upload limit. Local and B2 repository bytes are compared after every sync.
 Failure leaves the local backup intact and does not advance the remote-success
 timestamp. The ordering follows the documented
 [rclone sync behavior](https://rclone.org/commands/rclone_sync/): new objects
@@ -99,7 +104,10 @@ acceptable for deployment.
 The stable operator entry points are:
 
 - `nas-backup-immich init` explicitly initializes an empty local repository
-  and performs the first mirror. Access failures never auto-initialize it.
+  and performs the first mirror. If that mirror is interrupted, the same
+  explicit command may resume only after authenticating the runner-checked
+  repository and proving it still contains zero snapshots. Access failures
+  never reinitialize or replace it.
 - `nas-backup-immich run` performs the daily dump validation, snapshot, local
   backup and check, and B2 mirror under one lock.
 - `nas-backup-immich maintain` performs retention, integrity checks, and
@@ -109,9 +117,10 @@ The stable operator entry points are:
 
 The daily timer runs at 04:00 America/Chicago, after Immich's 02:00 database
 dump. Deployment follows the normal main-branch image flow. B2 and SOPS
-provisioning completed on 2026-08-30. Agents do not SSH to the NAS; the operator
-initializes the repository, triggers the first run, and returns secret-safe
-output from reviewed commands.
+provisioning completed on 2026-08-30. Local repository initialization and its
+first structural check also completed that day. The operator deploys the TAP
+correction, triggers the first run, and returns secret-safe output from
+reviewed commands.
 
 ## Verification and completion
 

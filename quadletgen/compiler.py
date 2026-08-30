@@ -29,6 +29,7 @@ from .render_manifest import (
     secrets_manifest,
     shared_storage_paths_manifest,
     storage_units_manifest,
+    host_vm_taps_manifest,
 )
 from .render_fleet import fleet_groups_sysusers_conf
 from .render_service import (
@@ -136,6 +137,17 @@ def compile_fleet(fleet: Fleet) -> tuple[Artifact, ...]:
                 ),
             ]
 
+    for tap in fleet.host_vm_taps:
+        artifacts += [
+            Artifact(
+                Path(f"usr/lib/systemd/network/80-{tap.tap_name}.netdev"),
+                networkd_netdev(tap),
+            ),
+            Artifact(
+                Path(f"usr/lib/systemd/network/80-{tap.tap_name}.network"),
+                networkd_network(tap, fleet),
+            ),
+        ]
     if fleet.groups:
         artifacts.append(
             Artifact(
@@ -205,6 +217,10 @@ def compile_fleet(fleet: Fleet) -> tuple[Artifact, ...]:
         Artifact(
             Path("usr/share/nas/fleet/active-taps.tsv"),
             active_taps_manifest(fleet),
+        ),
+        Artifact(
+            Path("usr/share/nas/fleet/host-vm-taps.tsv"),
+            host_vm_taps_manifest(fleet),
         ),
         Artifact(
             Path("usr/share/nas/fleet/secrets.tsv"),
