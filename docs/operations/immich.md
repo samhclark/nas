@@ -75,8 +75,13 @@ subsequent explicit MagicDNS override successfully carried a signed request to
 B2. That request exposed one remaining prefix-boundary defect:
 rclone treated the destination without a trailing slash as the parent object
 `immich/restic`, outside the key's intentional `immich/restic/` restriction.
-The directory-shaped remote-root correction is pending deployment. The first
-completed B2 backup and direct-B2 restore rehearsal remain pending.
+After the directory-shaped correction was deployed, the sync guest wrote the
+complete 604-byte empty repository to B2. The immediately following comparison
+guest then exited with rclone's temporary-error status before acquiring the TAP
+network. The runner now keeps sync and its acceptance comparison sequentially
+inside one rclone guest, avoiding a second pass through libkrun's single-shot
+100 ms DHCP window. That correction is pending deployment. The first completed
+B2 backup and direct-B2 restore rehearsal remain pending.
 
 ## Capacity gate before a large import
 

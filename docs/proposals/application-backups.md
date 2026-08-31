@@ -6,11 +6,15 @@ the first B2 mirror exposed the rejected passt networking path. The deployed
 root-owned TAP and explicit guest-DNS corrections now carry requests to B2.
 That validation exposed a final prefix-boundary defect: rclone probed the
 parent object `immich/restic` while the application key correctly permits only
-`immich/restic/`. The directory-shaped remote-root correction is pending
-deployment. First backup and restore validation remain pending. The
-implementation remains deliberately application-specific; this document does
-not define a generic backup schema or authorize arbitrary backup hooks in
-service TOML.
+`immich/restic/`. After the directory-shaped remote-root correction was
+deployed, production confirmed that the sync guest wrote the complete 604-byte
+empty repository, but the immediately following comparison guest missed
+libkrun's single-shot 100 ms DHCP response window and returned a temporary
+error. Sync and its acceptance comparison now run sequentially in one rclone
+guest; that correction is pending deployment. First backup and restore
+validation remain pending. The implementation remains deliberately
+application-specific; this document does not define a generic backup schema or
+authorize arbitrary backup hooks in service TOML.
 
 ## Recovery boundary
 

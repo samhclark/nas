@@ -194,34 +194,35 @@ b2_destination() {
 }
 
 mirror_repository() {
-    local destination log_file
+    local destination log_file status=0
     prepare_rclone_environment
     destination="$(b2_destination)"
     log_file="${BACKUP_ROOT}/.rclone-log.$$"
-    if ! nas_backup_run_vm outbound "${RCLONE_IMAGE}" "${RCLONE_ENV_FILE}" \
+    # Keep sync and its acceptance check in one guest. The libkrun DHCP client
+    # makes one request with a 100 ms response window; recycling the TAP between
+    # consecutive guests can therefore leave the comparison guest unconfigured
+    # while networkd processes the carrier transition.
+    nas_backup_run_vm outbound "${RCLONE_IMAGE}" "${RCLONE_ENV_FILE}" \
+        --entrypoint=/bin/sh \
         --volume="${REPOSITORY}:/repository:ro" \
         -- \
-        sync /repository "${destination}" --config=/dev/null \
-        --checksum --delete-after \
-        --exclude='/locks/**' --bwlimit=5Mi --use-json-log --stats=30s \
-        2> >(tee "${log_file}" >&2); then
-        /usr/bin/rm -f -- "${log_file}"
-        return 1
-    fi
+        -eu -c '
+            printf "Mirroring encrypted repository to B2.\n" >&2
+            rclone sync /repository "$1" --config=/dev/null \
+                --checksum --delete-after --exclude="/locks/**" \
+                --bwlimit=5Mi --use-json-log --stats=30s
+            printf "Comparing local and B2 repository bytes.\n" >&2
+            exec rclone check /repository "$1" --config=/dev/null \
+                --checksum --exclude="/locks/**"
+        ' nas-backup-rclone "${destination}" \
+        2> >(tee "${log_file}" >&2) || status=$?
     TRANSFERRED_BYTES="$(
         "${JQ_BIN}" -r 'select(.stats.bytes != null) | .stats.bytes' "${log_file}" \
             2>/dev/null | /usr/bin/tail -n 1
     )"
     [[ "${TRANSFERRED_BYTES}" =~ ^[0-9]+$ ]] || TRANSFERRED_BYTES=0
     /usr/bin/rm -f -- "${log_file}"
-
-    # This comparison is deliberately separate from sync: a successful sync
-    # process is not accepted until every visible repository byte agrees.
-    nas_backup_run_vm outbound "${RCLONE_IMAGE}" "${RCLONE_ENV_FILE}" \
-        --volume="${REPOSITORY}:/repository:ro" \
-        -- \
-        check /repository "${destination}" --config=/dev/null --checksum \
-        --exclude='/locks/**'
+    return "${status}"
 }
 
 remote_restic_check() {
