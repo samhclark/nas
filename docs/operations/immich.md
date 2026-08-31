@@ -81,10 +81,16 @@ guest then exited with rclone's temporary-error status before acquiring the TAP
 network. The runner now keeps sync and its acceptance comparison sequentially
 inside one rclone guest, avoiding a second pass through libkrun's single-shot
 100 ms DHCP window. Production validation of that correction completed the
-initial mirror: rclone found zero differences and two matching repository
-objects (`config` and the repository key) beneath `immich/restic/`. The first
-backup of an actual Immich recovery point and the direct-B2 restore rehearsal
-remain pending.
+remote comparison itself: rclone found zero differences and two matching
+repository objects (`config` and the repository key) beneath
+`immich/restic/`. The host runner did not return successfully or record its
+remote-success timestamp, so initialization acceptance remains pending. The
+first backup attempt then exposed that the capability-free restic guest could
+not traverse the private `0750`, UID/GID `51130` snapshot root. The photo-reading
+no-network guest now receives only `CAP_DAC_READ_SEARCH`; repository-only
+restic guests and the rclone guest remain capability-free. The first backup of
+an actual Immich recovery point and the direct-B2 restore rehearsal remain
+pending.
 
 ## Capacity gate before a large import
 

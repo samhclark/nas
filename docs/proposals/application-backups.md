@@ -12,10 +12,16 @@ empty repository, but the immediately following comparison guest missed
 libkrun's single-shot 100 ms DHCP response window and returned a temporary
 error. Sync and its acceptance comparison now run sequentially in one rclone
 guest. Production validation completed the initial mirror with zero
-differences and two matching repository objects. The first backup of an actual
-Immich recovery point and restore validation remain pending. The implementation
-remains deliberately application-specific; this document does not define a
-generic backup schema or authorize arbitrary backup hooks in service TOML.
+differences and two matching repository objects, but the host runner did not
+return successfully or record remote success. The first backup attempt exposed
+that dropping every capability prevents guest root from traversing Immich's
+private `0750`, UID/GID `51130` snapshot root. The no-network photo-reading
+guest now receives only `CAP_DAC_READ_SEARCH`; repository-only restic guests
+and the rclone guest remain capability-free. Initialization acceptance, the
+first backup of an actual Immich recovery point, and restore validation remain
+pending. The implementation remains deliberately application-specific; this
+document does not define a generic backup schema or authorize arbitrary backup
+hooks in service TOML.
 
 ## Recovery boundary
 
@@ -44,8 +50,11 @@ The local repository is `/var/lib/nas-backups/immich/restic`. A pinned restic
 0.19.1 image runs as a short-lived root-managed libkrun guest with no network,
 a read-only snapshot mount, the repository read-write, and only the restic
 password credential. The guest has 2 vCPUs, 2 GiB RAM, reduced CPU and I/O
-priority, no capabilities, and a read-only root filesystem. Every nonzero
-restic exit status, including partial-backup status 3, fails the run.
+priority, and a read-only root filesystem. All capabilities are dropped by
+default; only the photo-reading backup invocation re-adds
+`CAP_DAC_READ_SEARCH` so guest root can traverse the private read-only snapshot.
+Every nonzero restic exit status, including partial-backup status 3, fails the
+run.
 
 Restic provides encryption and authentication before any repository object is
 eligible for replication. A local structural check is a hard gate: failed
@@ -129,7 +138,9 @@ dump. Deployment follows the normal main-branch image flow. B2 and SOPS
 provisioning completed on 2026-08-30. Local repository initialization and its
 first structural check also completed that day. The initial empty-repository
 mirror and byte comparison subsequently completed with zero differences. The
-operator triggers the first backup run and returns secret-safe output from
+runner did not record remote success, so initialization acceptance remains
+pending. The operator deploys the private-source traversal correction, retries
+initialization and the first backup run, and returns secret-safe output from
 reviewed commands.
 
 ## Verification and completion

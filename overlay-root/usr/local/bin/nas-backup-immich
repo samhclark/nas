@@ -159,7 +159,13 @@ restic_vm() {
 
 restic_backup_snapshot() {
     local snapshot_path=$1
+    # The authoritative library is intentionally private to the Immich service
+    # (0750, UID/GID 51130). The backup guest runs as root with all capabilities
+    # dropped, so it otherwise falls into the directory's "other" class and
+    # cannot traverse the read-only snapshot. This capability is confined to
+    # the no-network microVM and its explicitly mounted source/repository paths.
     nas_backup_run_vm none "${RESTIC_IMAGE}" - \
+        --cap-add=DAC_READ_SEARCH \
         --env=RESTIC_REPOSITORY=/repository \
         --env=RESTIC_PASSWORD_FILE=/run/secrets/restic-password \
         --volume="${REPOSITORY}:/repository:rw" \
@@ -372,7 +378,9 @@ run_backup() {
     require_restic_secret
     require_b2_secrets
     validate_latest_dump
+    printf 'Measuring authoritative Immich library size.\n'
     SOURCE_SIZE="$("${DU_BIN}" -sbx -- "${SOURCE_ROOT}" | /usr/bin/awk '{print $1}')"
+    printf 'Measured authoritative Immich library size: %s bytes.\n' "${SOURCE_SIZE}"
     cleanup_stale_snapshots
     create_snapshot >/dev/null
     snapshot_path="${SOURCE_ROOT}/.zfs/snapshot/${CURRENT_SNAPSHOT#*@}"

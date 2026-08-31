@@ -177,8 +177,12 @@ class ImmichBackupTests(unittest.TestCase):
         self.assertIn("--network=none", calls[0])
         self.assertIn("--read-only", calls[0])
         self.assertIn("--cap-drop=all", calls[0])
+        self.assertIn("--cap-add=DAC_READ_SEARCH", calls[0])
+        self.assertIn(f"--volume={self.source}/.zfs/snapshot/", calls[0])
+        self.assertIn(":/source:ro", calls[0])
         self.assertIn("restic:0.19.1@sha256", calls[0])
         self.assertIn("check", calls[1])
+        self.assertNotIn("--cap-add=", calls[1])
         self.assertIn("sync /repository", calls[2])
         self.assertIn("b2:private-nas-backups/immich/restic/", calls[2])
         self.assertIn("--config=/dev/null", calls[2])
@@ -198,6 +202,7 @@ class ImmichBackupTests(unittest.TestCase):
         )
         self.assertEqual(calls[2].count("krun.tap_name=krun-backup"), 1)
         self.assertIn("--entrypoint=/bin/sh", calls[2])
+        self.assertNotIn("--cap-add=", calls[2])
         self.assertNotIn("--one-way", calls[2])
         self.assertEqual(
             self.zfs_log.read_text().splitlines(),
@@ -211,6 +216,16 @@ class ImmichBackupTests(unittest.TestCase):
         self.assertIn('destination="b2"} 1788192000', metrics)
         self.assertIn("nas_backup_last_run_success{application=\"immich\"} 1", metrics)
         self.assertIn('destination="b2"} 12345', metrics)
+
+    def test_source_measurement_is_visible_before_the_first_vm(self) -> None:
+        result = self.invoke("run")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Measuring authoritative Immich library size.\n", result.stdout)
+        self.assertRegex(
+            result.stdout,
+            r"Measured authoritative Immich library size: [0-9]+ bytes\.\n",
+        )
 
     def test_credentials_never_enter_argv_and_each_vm_gets_only_its_inputs(self) -> None:
         result = self.invoke("run")
@@ -354,6 +369,9 @@ class ImmichBackupTests(unittest.TestCase):
         self.assertIn("--network=host", calls[3])
         self.assertIn("--dns=100.100.100.100", calls[3])
         self.assertNotIn("krun.use_passt", calls[3])
+        for call in calls:
+            self.assertIn("--cap-drop=all", call)
+            self.assertNotIn("--cap-add=", call)
         metrics = self.metrics.read_text()
         self.assertIn("nas_backup_integrity_last_run_success{application=\"immich\"} 1", metrics)
         self.assertIn(f"nas_backup_integrity_last_success_timestamp_seconds{{application=\"immich\"}} {NOW}", metrics)

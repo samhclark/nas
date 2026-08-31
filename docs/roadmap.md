@@ -87,11 +87,15 @@ called out. A task is not active merely because it is listed here.
   single-shot 100 ms DHCP window and returned a temporary error. Sync and
   comparison now share one rclone guest. Production validation completed the
   initial empty-repository mirror with zero differences and two matching
-  objects. The first backup of an actual Immich recovery point and its
-  validation remain pending. R2 is not complete merely when the first upload
-  succeeds: it requires a full isolated restore from B2, representative UI and
-  original-download checks, cleanup of disposable resources, and
-  production-health revalidation. See
+  objects, but the runner did not return successfully or record remote success.
+  The first real backup attempt then showed that a capability-free guest root
+  cannot traverse the private `0750`, UID/GID `51130` snapshot root. The
+  no-network photo reader now receives only `CAP_DAC_READ_SEARCH`; all other
+  backup guests remain capability-free. Initialization acceptance, the first
+  backup of an actual recovery point, and its validation remain pending. R2 is
+  not complete merely when the first upload succeeds: it requires a full
+  isolated restore from B2, representative UI and original-download checks,
+  cleanup of disposable resources, and production-health revalidation. See
   [`proposals/application-backups.md`](proposals/application-backups.md) and
   [`operations/immich-restore.md`](operations/immich-restore.md).
 - [ ] **R3 — Protect the recovery inputs themselves.** Document and test access

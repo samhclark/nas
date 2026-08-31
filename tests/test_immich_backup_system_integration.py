@@ -115,6 +115,16 @@ class ImmichBackupSystemIntegrationTests(unittest.TestCase):
         self.assertIn("nas-backup-immich.timer", containerfile)
         self.assertIn("nas-maintain-immich-backup.timer", containerfile)
 
+    def test_only_photo_reader_receives_dac_read_search(self):
+        runner = (OVERLAY / "usr/local/bin/nas-backup-immich").read_text()
+        self.assertEqual(runner.count("--cap-add=DAC_READ_SEARCH"), 1)
+        photo_reader = runner.split("restic_backup_snapshot()", 1)[1].split(
+            "prepare_rclone_environment()", 1
+        )[0]
+        self.assertIn("--cap-add=DAC_READ_SEARCH", photo_reader)
+        self.assertIn('${snapshot_path}:/source:ro', photo_reader)
+        self.assertIn("nas_backup_run_vm none", photo_reader)
+
     def test_backup_repository_has_persistent_selinux_policy_and_boot_repair(self):
         containerfile = (REPO / "Containerfile").read_text()
         self.assertIn(
