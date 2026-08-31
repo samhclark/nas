@@ -197,7 +197,8 @@ mirror_repository() {
     if ! nas_backup_run_vm outbound "${RCLONE_IMAGE}" "${RCLONE_ENV_FILE}" \
         --volume="${REPOSITORY}:/repository:ro" \
         -- \
-        sync /repository "${destination}" --checksum --delete-after \
+        sync /repository "${destination}" --config=/dev/null \
+        --checksum --delete-after \
         --exclude='/locks/**' --bwlimit=5Mi --use-json-log --stats=30s \
         2> >(tee "${log_file}" >&2); then
         /usr/bin/rm -f -- "${log_file}"
@@ -215,7 +216,7 @@ mirror_repository() {
     nas_backup_run_vm outbound "${RCLONE_IMAGE}" "${RCLONE_ENV_FILE}" \
         --volume="${REPOSITORY}:/repository:ro" \
         -- \
-        check /repository "${destination}" --checksum \
+        check /repository "${destination}" --config=/dev/null --checksum \
         --exclude='/locks/**'
 }
 

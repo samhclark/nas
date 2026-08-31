@@ -70,8 +70,10 @@ real SOPS values, and external escrow of the restic encryption password are in
 place. The image was deployed and the local restic repository was explicitly
 initialized and structurally checked successfully. Its first mirror stopped
 before contacting B2 when crun could not start the former passt backend. The
-dedicated root-owned TAP correction is pending deployment; the first completed
-B2 backup and direct-B2 restore rehearsal remain pending.
+dedicated root-owned TAP correction was then deployed and established guest
+routing, but its first run exposed an inherited host-only DNS stub. An explicit
+MagicDNS override for transient outbound guests is pending deployment; the
+first completed B2 backup and direct-B2 restore rehearsal remain pending.
 
 ## Capacity gate before a large import
 

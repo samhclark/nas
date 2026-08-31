@@ -108,6 +108,7 @@ nas_backup_run_vm() {
             fi
             network_arguments=(
                 --network=host
+                --dns=100.100.100.100
                 --device="${NAS_BACKUP_TUN_DEVICE:-/dev/net/tun}"
                 --annotation="krun.tap_name=${tap_name}"
                 --label="io.samhclark.nas.host-vm-tap=${tap_id}"

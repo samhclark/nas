@@ -203,6 +203,7 @@ class ImmichBackupSystemIntegrationTests(unittest.TestCase):
         self.assertIn('/usr/bin/flock --shared "${network_lock_fd}"', runtime)
         self.assertNotIn("NAS_BACKUP_TAP_NAME", runtime)
         self.assertIn("--network=host", runtime)
+        self.assertIn("--dns=100.100.100.100", runtime)
         self.assertIn('--device="${NAS_BACKUP_TUN_DEVICE:-/dev/net/tun}"', runtime)
         self.assertNotIn("krun.use_passt", runtime)
 
