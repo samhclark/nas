@@ -85,11 +85,13 @@ called out. A task is not active merely because it is listed here.
   directory-shaped correction, the sync guest wrote the complete 604-byte
   empty repository to B2, but the immediate comparison guest missed libkrun's
   single-shot 100 ms DHCP window and returned a temporary error. Sync and
-  comparison now share one rclone guest; that correction awaits deployment.
-  The first B2 backup and validation remain pending. R2 is not complete merely
-  when the first upload succeeds: it requires a full isolated restore from B2,
-  representative UI and original-download checks, cleanup of disposable
-  resources, and production-health revalidation. See
+  comparison now share one rclone guest. Production validation completed the
+  initial empty-repository mirror with zero differences and two matching
+  objects. The first backup of an actual Immich recovery point and its
+  validation remain pending. R2 is not complete merely when the first upload
+  succeeds: it requires a full isolated restore from B2, representative UI and
+  original-download checks, cleanup of disposable resources, and
+  production-health revalidation. See
   [`proposals/application-backups.md`](proposals/application-backups.md) and
   [`operations/immich-restore.md`](operations/immich-restore.md).
 - [ ] **R3 — Protect the recovery inputs themselves.** Document and test access

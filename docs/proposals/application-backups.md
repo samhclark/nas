@@ -11,10 +11,11 @@ deployed, production confirmed that the sync guest wrote the complete 604-byte
 empty repository, but the immediately following comparison guest missed
 libkrun's single-shot 100 ms DHCP response window and returned a temporary
 error. Sync and its acceptance comparison now run sequentially in one rclone
-guest; that correction is pending deployment. First backup and restore
-validation remain pending. The implementation remains deliberately
-application-specific; this document does not define a generic backup schema or
-authorize arbitrary backup hooks in service TOML.
+guest. Production validation completed the initial mirror with zero
+differences and two matching repository objects. The first backup of an actual
+Immich recovery point and restore validation remain pending. The implementation
+remains deliberately application-specific; this document does not define a
+generic backup schema or authorize arbitrary backup hooks in service TOML.
 
 ## Recovery boundary
 
@@ -126,8 +127,9 @@ The stable operator entry points are:
 The daily timer runs at 04:00 America/Chicago, after Immich's 02:00 database
 dump. Deployment follows the normal main-branch image flow. B2 and SOPS
 provisioning completed on 2026-08-30. Local repository initialization and its
-first structural check also completed that day. The operator deploys the TAP
-correction, triggers the first run, and returns secret-safe output from
+first structural check also completed that day. The initial empty-repository
+mirror and byte comparison subsequently completed with zero differences. The
+operator triggers the first backup run and returns secret-safe output from
 reviewed commands.
 
 ## Verification and completion
