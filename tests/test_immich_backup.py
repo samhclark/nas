@@ -180,6 +180,7 @@ class ImmichBackupTests(unittest.TestCase):
         self.assertIn("restic:0.19.1@sha256", calls[0])
         self.assertIn("check", calls[1])
         self.assertIn("sync /repository", calls[2])
+        self.assertIn("b2:private-nas-backups/immich/restic/", calls[2])
         self.assertIn("--config=/dev/null", calls[2])
         self.assertIn("--delete-after", calls[2])
         self.assertIn("--bwlimit=5Mi", calls[2])
@@ -191,6 +192,7 @@ class ImmichBackupTests(unittest.TestCase):
         self.assertNotIn("krun.use_passt", calls[2])
         self.assertIn("--pull=missing", calls[2])
         self.assertIn("check /repository", calls[3])
+        self.assertIn("b2:private-nas-backups/immich/restic/", calls[3])
         self.assertIn("--config=/dev/null", calls[3])
         self.assertNotIn("--one-way", calls[3])
         self.assertEqual(

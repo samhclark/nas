@@ -3,12 +3,14 @@
 Status: implemented, provisioned, and deployed for Immich as of 2026-08-30.
 The local repository was initialized and structurally checked successfully;
 the first B2 mirror exposed the rejected passt networking path. The deployed
-root-owned TAP correction established guest routing, but its first run exposed
-that the transient guest still inherited the host-only resolver stub. The
-explicit guest-DNS correction is pending deployment. First backup and restore
-validation remain pending. The implementation remains deliberately
-application-specific; this document does not define a generic backup schema or
-authorize arbitrary backup hooks in service TOML.
+root-owned TAP and explicit guest-DNS corrections now carry requests to B2.
+That validation exposed a final prefix-boundary defect: rclone probed the
+parent object `immich/restic` while the application key correctly permits only
+`immich/restic/`. The directory-shaped remote-root correction is pending
+deployment. First backup and restore validation remain pending. The
+implementation remains deliberately application-specific; this document does
+not define a generic backup schema or authorize arbitrary backup hooks in
+service TOML.
 
 ## Recovery boundary
 

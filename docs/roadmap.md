@@ -78,10 +78,12 @@ called out. A task is not active merely because it is listed here.
   prefix-scoped application key, five real SOPS values, and external escrow of
   the restic encryption password are in place. Deployment and local repository
   initialization/check succeeded; the first mirror exposed the rejected passt
-  path. The generated root-owned `krun-backup` TAP correction was deployed and
-  established guest routing, then exposed an inherited host-only DNS stub. An
-  explicit guest-DNS correction now awaits deployment. The first B2 backup and
-  validation remain pending. R2 is not complete merely when the first upload
+  path. The generated root-owned `krun-backup` TAP and explicit guest-DNS
+  corrections were deployed and carried a signed request to B2. That
+  request exposed rclone probing the parent object `immich/restic`, outside the
+  key's correct `immich/restic/` prefix restriction. A directory-shaped remote
+  root correction now awaits deployment. The first B2 backup and validation
+  remain pending. R2 is not complete merely when the first upload
   succeeds: it requires a full isolated restore from B2, representative UI and
   original-download checks, cleanup of disposable resources, and
   production-health revalidation. See

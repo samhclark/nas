@@ -186,7 +186,11 @@ prepare_rclone_environment() {
 }
 
 b2_destination() {
-    printf 'b2:%s/immich/restic\n' "$(<"${SECRET_DIR}/immich-backup-b2-bucket")"
+    # Keep the remote root directory-shaped. Without the trailing slash rclone
+    # probes `immich/restic` as an object before listing its descendants. That
+    # parent key is intentionally outside the credential's `immich/restic/`
+    # name-prefix restriction and Backblaze correctly rejects the probe.
+    printf 'b2:%s/immich/restic/\n' "$(<"${SECRET_DIR}/immich-backup-b2-bucket")"
 }
 
 mirror_repository() {
