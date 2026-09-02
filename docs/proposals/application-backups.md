@@ -17,11 +17,22 @@ return successfully or record remote success. The first backup attempt exposed
 that dropping every capability prevents guest root from traversing Immich's
 private `0750`, UID/GID `51130` snapshot root. The no-network photo-reading
 guest now receives only `CAP_DAC_READ_SEARCH`; repository-only restic guests
-and the rclone guest remain capability-free. Initialization acceptance, the
-first backup of an actual Immich recovery point, and restore validation remain
-pending. The implementation remains deliberately application-specific; this
-document does not define a generic backup schema or authorize arbitrary backup
-hooks in service TOML.
+and the rclone guest remain capability-free. The next production attempt could
+traverse the snapshot root, but restic's device filter treated all descendants
+across the virtiofs boundary as separate filesystems and saved zero files from
+the measured 40,323,811,505-byte source. The unusable snapshot passed a
+structural check and its five repository objects matched B2; remote success
+still was not recorded because the runner both raced its asynchronous rclone
+log writer and parsed mixed plain-text/JSON output as pure JSON. Logging is now
+synchronized before parsing while preserving both the VM and logger statuses,
+and metric extraction tolerates non-JSON lines. The device filter is removed.
+A post-backup content gate selects the expected host/path/tag, requires at
+least one file and 99% of the measured regular-file bytes, and forgets a
+rejected snapshot before failing. Maintenance validates the newest matching
+snapshot before pruning or replication. Initialization acceptance, the first
+actual recovery point, and restore validation remain pending. The implementation
+remains deliberately application-specific; this document does not define a
+generic backup schema or authorize arbitrary backup hooks in service TOML.
 
 ## Recovery boundary
 
@@ -54,7 +65,15 @@ priority, and a read-only root filesystem. All capabilities are dropped by
 default; only the photo-reading backup invocation re-adds
 `CAP_DAC_READ_SEARCH` so guest root can traverse the private read-only snapshot.
 Every nonzero restic exit status, including partial-backup status 3, fails the
-run.
+run. The nonrecursive ZFS snapshot, rather than a guest device-number filter,
+defines the dataset boundary. After backup, the runner verifies that the newest
+matching restic snapshot processed at least one file and at least 99% of the
+regular-file bytes measured immediately before snapshot creation. An
+incomplete recovery point is forgotten locally and fails before the structural
+check, success timestamp, or replication. Maintenance also rejects an invalid newest
+matching snapshot before retention or replication. Source measurement prunes
+the visible `.zfs` namespace, and a valid run removes historical zero-content
+snapshots before local verification and replication.
 
 Restic provides encryption and authentication before any repository object is
 eligible for replication. A local structural check is a hard gate: failed

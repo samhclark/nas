@@ -144,6 +144,10 @@ smoke-immich-images: ## Run Podman-only smoke tests for pinned Immich companion 
 smoke-immich-backup: ## Exercise an encrypted local Immich backup and restore round trip
 	@CONTAINER_CLI="$(PODMAN)" $(UV_RUN) python scripts/smoke-immich-backup.py
 
+.PHONY: smoke-immich-backup-krun
+smoke-immich-backup-krun: ## Exercise the encrypted Immich backup round trip in libkrun
+	@CONTAINER_CLI="$(PODMAN)" $(UV_RUN) python scripts/smoke-immich-backup.py --runtime=krun
+
 ARR_SMOKE_STARTUP_TIMEOUT_SECONDS ?= 60
 ARR_SMOKE_OBSERVE_SECONDS ?= 10
 .PHONY: smoke-arr-images
@@ -200,6 +204,12 @@ test-vm: deps-vm ## Boot a fresh QCOW in an isolated VM; set QCOW=/absolute/path
 		QEMU_BIN="$(QEMU)" QEMU_IMG_BIN="$(QEMU_IMG)" JQ_BIN="$(JQ)" \
 		TIMEOUT_BIN="$(TIMEOUT)" OVMF_CODE="$(OVMF_CODE)" \
 		./scripts/run-vm-smoke.sh "$(QCOW)"
+
+.PHONY: smoke-immich-backup-vm
+smoke-immich-backup-vm: deps-immich-backup-vm ## Run the exact-image local Immich backup/ZFS/libkrun smoke
+	@CONTAINER_CLI="$(PODMAN)" DOCKER_BIN="$(DOCKER)" SKOPEO_BIN="$(SKOPEO)" \
+		QEMU_IMG_BIN="$(QEMU_IMG)" \
+		./scripts/run-immich-backup-vm-smoke.sh
 
 .PHONY: generate-ignition
 generate-ignition: ## Generate ignition.json from butane.yaml
@@ -281,6 +291,16 @@ deps-vm: deps-check-podman deps-check-jq ## Check optional VM smoke dependencies
 	@test -r /dev/kvm && test -w /dev/kvm || \
 		(printf "$(COLOR_RED)/dev/kvm is not accessible.$(COLOR_RESET)\n" && false)
 	@printf "$(COLOR_GREEN)VM smoke deps present!$(COLOR_RESET)\n"
+
+.PHONY: deps-immich-backup-vm
+deps-immich-backup-vm: deps-check-podman deps-check-jq deps-check-docker deps-check-skopeo ## Check exact-image Immich backup VM smoke dependencies
+	@command -v $(QEMU_IMG) >/dev/null || \
+		(printf "$(COLOR_RED)$(QEMU_IMG) not found.$(COLOR_RESET)\n" && false)
+	@test -r /dev/kvm && test -w /dev/kvm || \
+		(printf "$(COLOR_RED)/dev/kvm is not accessible.$(COLOR_RESET)\n" && false)
+	@command -v bcvk >/dev/null || \
+		(printf "$(COLOR_RED)bcvk not found. Install bcvk 0.18 or newer.$(COLOR_RESET)\n" && false)
+	@printf "$(COLOR_GREEN)Immich backup VM smoke deps present!$(COLOR_RESET)\n"
 
 .PHONY: deps-check-podman
 deps-check-podman: ## Check that podman is available

@@ -91,11 +91,24 @@ called out. A task is not active merely because it is listed here.
   The first real backup attempt then showed that a capability-free guest root
   cannot traverse the private `0750`, UID/GID `51130` snapshot root. The
   no-network photo reader now receives only `CAP_DAC_READ_SEARCH`; all other
-  backup guests remain capability-free. Initialization acceptance, the first
-  backup of an actual recovery point, and its validation remain pending. R2 is
-  not complete merely when the first upload succeeds: it requires a full
-  isolated restore from B2, representative UI and original-download checks,
-  cleanup of disposable resources, and production-health revalidation. See
+  backup guests remain capability-free. The next attempt reached the snapshot,
+  but `--one-file-system` crossed an unreliable virtiofs device boundary and
+  saved zero files from the measured 40,323,811,505-byte source. Its five
+  structurally valid repository objects matched B2, but remote success again
+  remained unrecorded because the runner raced its asynchronous rclone log
+  writer and treated mixed output as pure JSON. Logging is now synchronized
+  and its metric parser tolerates non-JSON guest diagnostics. The device filter
+  is removed; the nonrecursive ZFS snapshot defines exclusion. A new content
+  gate requires a nonempty snapshot containing at least 99% of the measured
+  regular-file bytes, forgets rejected snapshots, and prevents daily or
+  maintenance replication of an incomplete recovery point. It excludes the
+  visible `.zfs` namespace from measurement and removes historical zero-content
+  snapshots after accepting a valid latest recovery point.
+  Initialization acceptance, the first actual recovery point, and its
+  validation remain pending. R2 is not complete merely when the first upload
+  succeeds: it requires a full isolated restore from B2, representative UI and
+  original-download checks, cleanup of disposable resources, and
+  production-health revalidation. See
   [`proposals/application-backups.md`](proposals/application-backups.md) and
   [`operations/immich-restore.md`](operations/immich-restore.md).
 - [ ] **R3 — Protect the recovery inputs themselves.** Document and test access

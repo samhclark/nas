@@ -29,6 +29,8 @@ here rather than reading rollout plans or evidence logs.
 - [`operations/immich-restore.md`](operations/immich-restore.md) — accepted
   recovery objective, direct B2 recovery, reviewed restore sequence, and
   rehearsal evidence
+- [`operations/immich-backup-vm-smoke.md`](operations/immich-backup-vm-smoke.md)
+  — production-shaped local ZFS/restic/libkrun recovery-point gate
 - [`operations/logging.md`](operations/logging.md) — host journald, Vector,
   VictoriaLogs pilot, and staged operator validation
 - [`operations/media-automation.md`](operations/media-automation.md) — the

@@ -11,7 +11,7 @@ readonly STATE_DIR="${BACKUP_ROOT}/state"
 readonly SECRET_DIR="${NAS_BACKUP_SECRET_DIR:-/run/nas-secrets/immich-backup}"
 readonly METRICS_FILE="${NAS_BACKUP_METRICS_FILE:-/var/lib/prometheus/node-exporter/nas_backup_immich.prom}"
 readonly LOCK_FILE="${NAS_BACKUP_LOCK_FILE:-/run/lock/nas-backup-immich.lock}"
-readonly RESTIC_IMAGE="docker.io/restic/restic:0.19.1@sha256:136600b6ff6843d61d355f7f71f460a166429f35de6fd11b568fece3c9a4d510"
+readonly RESTIC_IMAGE="docker.io/restic/restic:0.19.1@sha256:08916bcda4a4435f9d9828ebb4e91bb7ada3d2c8a53699788930e0ae1bd4fa67"
 readonly RCLONE_IMAGE="docker.io/rclone/rclone:1.74.0@sha256:d2e0e88359d0b2e67cfcd2c43d5405185eb8adfc207079df27c42da82c5207bc"
 readonly SNAPSHOT_PREFIX="nas-backup-immich-"
 readonly MINIMUM_FREE_BYTES=$((100 * 1024 * 1024 * 1024))
@@ -31,6 +31,7 @@ source "${runtime_library}"
 RUN_RESULT=0
 RUN_STARTED=0
 SOURCE_SIZE=0
+SOURCE_FILE_BYTES=0
 TRANSFERRED_BYTES=0
 CURRENT_SNAPSHOT=
 RCLONE_ENV_FILE=
@@ -171,7 +172,60 @@ restic_backup_snapshot() {
         --volume="${REPOSITORY}:/repository:rw" \
         --volume="${snapshot_path}:/source:ro" \
         --volume="${SECRET_DIR}/immich-backup-restic-password:/run/secrets/restic-password:ro,Z" \
-        -- backup /source --host nas --tag immich --one-file-system
+        -- backup /source --host nas --tag immich
+}
+
+validate_latest_backup_snapshot() {
+    local minimum_bytes=${1:-1}
+    local snapshots snapshot_id files bytes invalid_snapshot_id
+    snapshots="$(
+        restic_vm snapshots --json \
+            --host=nas --path=/source --tag=immich
+    )"
+    snapshot_id="$("${JQ_BIN}" -r \
+        'if length > 0 then (sort_by(.time) | last | .id // "") else "" end' \
+        <<<"${snapshots}")"
+    files="$("${JQ_BIN}" -r \
+        'if length > 0 then (sort_by(.time) | last | .summary.total_files_processed // 0) else 0 end' \
+        <<<"${snapshots}")"
+    bytes="$("${JQ_BIN}" -r \
+        'if length > 0 then (sort_by(.time) | last | .summary.total_bytes_processed // 0) else 0 end' \
+        <<<"${snapshots}")"
+    if [[ ! "${minimum_bytes}" =~ ^[0-9]+$ ]] || (( minimum_bytes < 1 )); then
+        printf 'Invalid minimum Immich recovery-point size: %s bytes.\n' \
+            "${minimum_bytes}" >&2
+        return 1
+    fi
+    if [[ ! "${snapshot_id}" =~ ^[0-9a-f]{64}$ ]] || \
+            [[ ! "${files}" =~ ^[0-9]+$ ]] || [[ ! "${bytes}" =~ ^[0-9]+$ ]]; then
+        printf 'Refusing Immich recovery point with an unusable snapshot summary.\n' >&2
+        return 1
+    fi
+    if (( files == 0 || bytes < minimum_bytes )); then
+        printf 'Refusing incomplete Immich recovery point: latest restic snapshot has %s files and %s bytes; at least %s bytes are required.\n' \
+            "${files}" "${bytes}" "${minimum_bytes}" >&2
+        if restic_vm forget "${snapshot_id}"; then
+            printf 'Removed invalid Immich restic snapshot: %s.\n' "${snapshot_id}"
+        else
+            printf 'Could not remove invalid Immich restic snapshot: %s.\n' \
+                "${snapshot_id}" >&2
+        fi
+        return 1
+    fi
+    printf 'Validated latest restic snapshot content: %s files, %s bytes.\n' \
+        "${files}" "${bytes}"
+    while IFS= read -r invalid_snapshot_id; do
+        [[ "${invalid_snapshot_id}" =~ ^[0-9a-f]{64}$ ]] || continue
+        restic_vm forget "${invalid_snapshot_id}"
+        printf 'Removed historical empty Immich restic snapshot: %s.\n' \
+            "${invalid_snapshot_id}"
+    done < <(
+        "${JQ_BIN}" -r \
+            '.[]
+             | select((.summary.total_files_processed? == 0)
+                      or (.summary.total_bytes_processed? == 0))
+             | .id // ""' <<<"${snapshots}"
+    )
 }
 
 prepare_rclone_environment() {
@@ -201,6 +255,7 @@ b2_destination() {
 
 mirror_repository() {
     local destination log_file status=0
+    local -a pipeline_status=()
     prepare_rclone_environment
     destination="$(b2_destination)"
     log_file="${BACKUP_ROOT}/.rclone-log.$$"
@@ -208,6 +263,7 @@ mirror_repository() {
     # makes one request with a 100 ms response window; recycling the TAP between
     # consecutive guests can therefore leave the comparison guest unconfigured
     # while networkd processes the carrier transition.
+    set +e
     nas_backup_run_vm outbound "${RCLONE_IMAGE}" "${RCLONE_ENV_FILE}" \
         --entrypoint=/bin/sh \
         --volume="${REPOSITORY}:/repository:ro" \
@@ -216,18 +272,30 @@ mirror_repository() {
             printf "Mirroring encrypted repository to B2.\n" >&2
             rclone sync /repository "$1" --config=/dev/null \
                 --checksum --delete-after --exclude="/locks/**" \
-                --bwlimit=5Mi --use-json-log --stats=30s
+                --bwlimit=5Mi --use-json-log --stats=30s \
+                --stats-log-level=NOTICE
             printf "Comparing local and B2 repository bytes.\n" >&2
             exec rclone check /repository "$1" --config=/dev/null \
                 --checksum --exclude="/locks/**"
         ' nas-backup-rclone "${destination}" \
-        2> >(tee "${log_file}" >&2) || status=$?
+        2>&1 | /usr/bin/tee "${log_file}" >&2
+    pipeline_status=("${PIPESTATUS[@]}")
+    set -e
+    status=${pipeline_status[0]}
+    if (( status == 0 && pipeline_status[1] != 0 )); then
+        status=${pipeline_status[1]}
+    fi
     TRANSFERRED_BYTES="$(
-        "${JQ_BIN}" -r 'select(.stats.bytes != null) | .stats.bytes' "${log_file}" \
+        "${JQ_BIN}" -Rr \
+            'fromjson? | select(.stats.bytes? != null) | .stats.bytes' "${log_file}" \
             2>/dev/null | /usr/bin/tail -n 1
     )"
     [[ "${TRANSFERRED_BYTES}" =~ ^[0-9]+$ ]] || TRANSFERRED_BYTES=0
     /usr/bin/rm -f -- "${log_file}"
+    if (( status != 0 )); then
+        printf 'B2 mirror guest returned status %s after sync/comparison.\n' \
+            "${status}" >&2
+    fi
     return "${status}"
 }
 
@@ -378,13 +446,26 @@ run_backup() {
     require_restic_secret
     require_b2_secrets
     validate_latest_dump
-    printf 'Measuring authoritative Immich library size.\n'
-    SOURCE_SIZE="$("${DU_BIN}" -sbx -- "${SOURCE_ROOT}" | /usr/bin/awk '{print $1}')"
-    printf 'Measured authoritative Immich library size: %s bytes.\n' "${SOURCE_SIZE}"
+    printf 'Measuring authoritative Immich library file bytes.\n'
+    SOURCE_FILE_BYTES="$(
+        /usr/bin/find "${SOURCE_ROOT}" -xdev \
+            -path "${SOURCE_ROOT}/.zfs" -prune -o \
+            -type f -printf '%s\n' \
+            | /usr/bin/awk '{total += $1} END {printf "%.0f\n", total}'
+    )"
+    if [[ ! "${SOURCE_FILE_BYTES}" =~ ^[1-9][0-9]*$ ]]; then
+        printf 'Refusing backup with an invalid authoritative file-byte total: %s.\n' \
+            "${SOURCE_FILE_BYTES:-unknown}" >&2
+        return 1
+    fi
+    SOURCE_SIZE="${SOURCE_FILE_BYTES}"
+    printf 'Measured authoritative Immich library file bytes: %s.\n' \
+        "${SOURCE_FILE_BYTES}"
     cleanup_stale_snapshots
     create_snapshot >/dev/null
     snapshot_path="${SOURCE_ROOT}/.zfs/snapshot/${CURRENT_SNAPSHOT#*@}"
     restic_backup_snapshot "${snapshot_path}"
+    validate_latest_backup_snapshot "$(( (SOURCE_FILE_BYTES * 99 + 99) / 100 ))"
     restic_vm check
     record_success local-success
     mirror_repository
@@ -396,6 +477,7 @@ maintain_repository() {
     "${PREPARE_STORAGE_BIN}"
     require_capacity
     nas_backup_record_timestamp "${STATE_DIR}/integrity-result" 0
+    validate_latest_backup_snapshot 1
     restic_vm forget --keep-daily=14 --keep-weekly=8 --keep-monthly=12 \
         --keep-yearly=3 --prune
     restic_vm check

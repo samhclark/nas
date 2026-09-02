@@ -58,8 +58,23 @@ fi
 if [[ " $* " == *" snapshots --json --no-lock "* ]]; then
   printf '[]\n'
 fi
+if [[ " $* " == *" snapshots --json --host=nas --path=/source --tag=immich "* ]]; then
+  if [[ "${FAKE_HISTORICAL_EMPTY:-0}" == 1 ]]; then
+    printf '[{"id":"%064d","time":"2026-08-01T00:00:00Z","summary":{"total_files_processed":0,"total_bytes_processed":0}},' 1
+  else
+    printf '['
+  fi
+  printf '{"id":"%064d","time":"2026-09-01T04:00:00Z","summary":{"total_files_processed":%s,"total_bytes_processed":%s}}]\n' \
+    0 "${FAKE_SNAPSHOT_FILES:-1}" "${FAKE_SNAPSHOT_BYTES:-1000000000}"
+fi
 if [[ " $* " == *" sync "* ]]; then
-  printf '%s\n' '{"stats":{"bytes":12345}}' >&2
+  printf '%s\n' 'non-JSON guest diagnostic' >&2
+  if [[ "${FAKE_DELAYED_RCLONE_LOG:-0}" == 1 ]]; then
+    printf '%s' '{"stats":' >&2
+    (sleep 0.1; printf '%s\n' '{"bytes":12345}}' >&2) &
+  else
+    printf '%s\n' '{"stats":{"bytes":12345}}' >&2
+  fi
 fi
 """
 
@@ -172,7 +187,7 @@ class ImmichBackupTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
         calls = self.invocations()
-        self.assertEqual(len(calls), 3)
+        self.assertEqual(len(calls), 4)
         self.assertIn("backup /source", calls[0])
         self.assertIn("--network=none", calls[0])
         self.assertIn("--read-only", calls[0])
@@ -181,29 +196,36 @@ class ImmichBackupTests(unittest.TestCase):
         self.assertIn(f"--volume={self.source}/.zfs/snapshot/", calls[0])
         self.assertIn(":/source:ro", calls[0])
         self.assertIn("restic:0.19.1@sha256", calls[0])
-        self.assertIn("check", calls[1])
-        self.assertNotIn("--cap-add=", calls[1])
-        self.assertIn("sync /repository", calls[2])
-        self.assertIn("b2:private-nas-backups/immich/restic/", calls[2])
-        self.assertIn("--config=/dev/null", calls[2])
-        self.assertIn("--delete-after", calls[2])
-        self.assertIn("--bwlimit=5Mi", calls[2])
-        self.assertIn("krun.tap_name=krun-backup", calls[2])
-        self.assertIn("--network=host", calls[2])
-        self.assertIn("--dns=100.100.100.100", calls[2])
-        self.assertIn("--device=/dev/null", calls[2])
-        self.assertIn("io.samhclark.nas.host-vm-tap=immich-backup", calls[2])
-        self.assertNotIn("krun.use_passt", calls[2])
-        self.assertIn("--pull=missing", calls[2])
-        self.assertIn("check /repository", calls[2])
-        self.assertLess(
-            calls[2].index("sync /repository"),
-            calls[2].index("check /repository"),
+        self.assertNotIn("--one-file-system", calls[0])
+        self.assertIn(
+            "snapshots --json --host=nas --path=/source --tag=immich",
+            calls[1],
         )
-        self.assertEqual(calls[2].count("krun.tap_name=krun-backup"), 1)
-        self.assertIn("--entrypoint=/bin/sh", calls[2])
+        self.assertNotIn("--cap-add=", calls[1])
+        self.assertIn("check", calls[2])
         self.assertNotIn("--cap-add=", calls[2])
-        self.assertNotIn("--one-way", calls[2])
+        self.assertIn("sync /repository", calls[3])
+        self.assertIn("b2:private-nas-backups/immich/restic/", calls[3])
+        self.assertIn("--config=/dev/null", calls[3])
+        self.assertIn("--delete-after", calls[3])
+        self.assertIn("--bwlimit=5Mi", calls[3])
+        self.assertIn("--stats-log-level=NOTICE", calls[3])
+        self.assertIn("krun.tap_name=krun-backup", calls[3])
+        self.assertIn("--network=host", calls[3])
+        self.assertIn("--dns=100.100.100.100", calls[3])
+        self.assertIn("--device=/dev/null", calls[3])
+        self.assertIn("io.samhclark.nas.host-vm-tap=immich-backup", calls[3])
+        self.assertNotIn("krun.use_passt", calls[3])
+        self.assertIn("--pull=missing", calls[3])
+        self.assertIn("check /repository", calls[3])
+        self.assertLess(
+            calls[3].index("sync /repository"),
+            calls[3].index("check /repository"),
+        )
+        self.assertEqual(calls[3].count("krun.tap_name=krun-backup"), 1)
+        self.assertIn("--entrypoint=/bin/sh", calls[3])
+        self.assertNotIn("--cap-add=", calls[3])
+        self.assertNotIn("--one-way", calls[3])
         self.assertEqual(
             self.zfs_log.read_text().splitlines(),
             [
@@ -221,11 +243,53 @@ class ImmichBackupTests(unittest.TestCase):
         result = self.invoke("run")
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("Measuring authoritative Immich library size.\n", result.stdout)
+        self.assertIn(
+            "Measuring authoritative Immich library file bytes.\n",
+            result.stdout,
+        )
         self.assertRegex(
             result.stdout,
-            r"Measured authoritative Immich library size: [0-9]+ bytes\.\n",
+            r"Measured authoritative Immich library file bytes: [0-9]+\.\n",
         )
+
+    def test_source_measurement_excludes_visible_zfs_snapshot_namespace(self) -> None:
+        historical = self.source / ".zfs" / "snapshot" / "manual" / "old.jpg"
+        historical.parent.mkdir(parents=True)
+        historical.write_bytes(b"x" * 100_000)
+        expected = sum(
+            path.stat().st_size
+            for path in self.source.rglob("*")
+            if path.is_file() and ".zfs" not in path.parts
+        )
+
+        result = self.invoke("run", FAKE_SNAPSHOT_BYTES=str(expected))
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(
+            f"Measured authoritative Immich library file bytes: {expected}.",
+            result.stdout,
+        )
+
+    def test_valid_backup_removes_historical_empty_snapshot_before_mirroring(self) -> None:
+        result = self.invoke("run", FAKE_HISTORICAL_EMPTY="1")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = self.invocations()
+        self.assertIn(
+            "forget 0000000000000000000000000000000000000000000000000000000000000001",
+            calls[2],
+        )
+        self.assertLess(calls.index(calls[2]), next(
+            index for index, call in enumerate(calls) if "sync /repository" in call
+        ))
+        self.assertIn("Removed historical empty Immich restic snapshot", result.stdout)
+
+    def test_mirror_waits_for_delayed_log_writer_before_parsing(self) -> None:
+        result = self.invoke("run", FAKE_DELAYED_RCLONE_LOG="1")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('destination="b2"} 12345', self.metrics.read_text())
+        self.assertTrue((self.backup / "state" / "remote-success").is_file())
 
     def test_credentials_never_enter_argv_and_each_vm_gets_only_its_inputs(self) -> None:
         result = self.invoke("run")
@@ -238,8 +302,8 @@ class ImmichBackupTests(unittest.TestCase):
         self.assertNotIn("original.jpg", all_arguments)
         self.assertNotIn(".rclone-env", calls[0])
         self.assertNotIn("--config=/dev/null", calls[0])
-        self.assertNotIn("restic-password", calls[2])
-        self.assertNotIn(str(self.source), calls[2])
+        self.assertNotIn("restic-password", calls[3])
+        self.assertNotIn(str(self.source), calls[3])
         self.assertNotIn("krun.use_passt", calls[0])
         self.assertNotIn("krun.tap_name", calls[0])
         self.assertNotIn("--dns=", calls[0])
@@ -255,6 +319,33 @@ class ImmichBackupTests(unittest.TestCase):
         self.assertIn("destroy\t", self.zfs_log.read_text())
         self.assertIn("nas_backup_last_run_success{application=\"immich\"} 0", self.metrics.read_text())
 
+    def test_empty_restic_snapshot_prevents_check_and_replication(self) -> None:
+        result = self.invoke(
+            "run", FAKE_SNAPSHOT_FILES="0", FAKE_SNAPSHOT_BYTES="0"
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Refusing incomplete Immich recovery point", result.stderr)
+        calls = self.invocations()
+        self.assertEqual(len(calls), 3)
+        self.assertIn("backup /source", calls[0])
+        self.assertIn("snapshots --json --host=nas", calls[1])
+        self.assertIn("forget 0000000000000000000000000000000000000000000000000000000000000000", calls[2])
+        self.assertFalse(any("sync /repository" in call for call in calls))
+        self.assertFalse((self.backup / "state" / "local-success").exists())
+
+    def test_partial_restic_snapshot_is_removed_before_check_and_replication(self) -> None:
+        result = self.invoke(
+            "run", FAKE_SNAPSHOT_FILES="1", FAKE_SNAPSHOT_BYTES="1"
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Refusing incomplete Immich recovery point", result.stderr)
+        self.assertEqual(len(self.invocations()), 3)
+        self.assertFalse(
+            any("sync /repository" in call for call in self.invocations())
+        )
+
     def test_failed_local_check_prevents_replication_but_keeps_local_success_old(self) -> None:
         state = self.backup / "state"
         state.mkdir(parents=True)
@@ -262,7 +353,7 @@ class ImmichBackupTests(unittest.TestCase):
         result = self.invoke("run", FAKE_PODMAN_FAIL_MATCH="check")
 
         self.assertNotEqual(result.returncode, 0)
-        self.assertEqual(len(self.invocations()), 2)
+        self.assertEqual(len(self.invocations()), 3)
         self.assertEqual((state / "local-success").read_text(), "123\n")
         self.assertFalse((state / "remote-success").exists())
 
@@ -278,6 +369,7 @@ class ImmichBackupTests(unittest.TestCase):
         )
 
         self.assertEqual(result.returncode, 5)
+        self.assertIn("B2 mirror guest returned status 5", result.stderr)
         self.assertEqual((state / "local-success").read_text(), f"{NOW}\n")
         self.assertEqual((state / "remote-success").read_text(), "456\n")
 
@@ -360,21 +452,40 @@ class ImmichBackupTests(unittest.TestCase):
         result = self.invoke("maintain")
         self.assertEqual(result.returncode, 0, result.stderr)
         calls = self.invocations()
-        self.assertIn("forget --keep-daily=14 --keep-weekly=8 --keep-monthly=12 --keep-yearly=3 --prune", calls[0])
-        self.assertIn("--network=none", calls[1])
-        self.assertIn("sync /repository", calls[2])
-        self.assertIn("check /repository", calls[2])
-        self.assertIn("--read-data-subset=", calls[3])
-        self.assertIn("krun.tap_name=krun-backup", calls[3])
-        self.assertIn("--network=host", calls[3])
-        self.assertIn("--dns=100.100.100.100", calls[3])
-        self.assertNotIn("krun.use_passt", calls[3])
+        self.assertIn("snapshots --json --host=nas", calls[0])
+        self.assertIn("forget --keep-daily=14 --keep-weekly=8 --keep-monthly=12 --keep-yearly=3 --prune", calls[1])
+        self.assertIn("--network=none", calls[2])
+        self.assertIn("sync /repository", calls[3])
+        self.assertIn("check /repository", calls[3])
+        self.assertIn("--read-data-subset=", calls[4])
+        self.assertIn("krun.tap_name=krun-backup", calls[4])
+        self.assertIn("--network=host", calls[4])
+        self.assertIn("--dns=100.100.100.100", calls[4])
+        self.assertNotIn("krun.use_passt", calls[4])
         for call in calls:
             self.assertIn("--cap-drop=all", call)
             self.assertNotIn("--cap-add=", call)
         metrics = self.metrics.read_text()
         self.assertIn("nas_backup_integrity_last_run_success{application=\"immich\"} 1", metrics)
         self.assertIn(f"nas_backup_integrity_last_success_timestamp_seconds{{application=\"immich\"}} {NOW}", metrics)
+
+    def test_maintain_removes_invalid_latest_snapshot_without_replication(self) -> None:
+        result = self.invoke(
+            "maintain", FAKE_SNAPSHOT_FILES="0", FAKE_SNAPSHOT_BYTES="0"
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Refusing incomplete Immich recovery point", result.stderr)
+        calls = self.invocations()
+        self.assertEqual(len(calls), 2)
+        self.assertIn("snapshots --json --host=nas", calls[0])
+        self.assertIn(
+            "forget 0000000000000000000000000000000000000000000000000000000000000000",
+            calls[1],
+        )
+        self.assertFalse(any("--prune" in call for call in calls))
+        self.assertFalse(any("sync /repository" in call for call in calls))
+        self.assertFalse((self.backup / "state" / "remote-success").exists())
 
     def test_failed_remote_integrity_check_removes_temporary_credentials(self) -> None:
         result = self.invoke(
@@ -397,7 +508,7 @@ class ImmichBackupTests(unittest.TestCase):
         result = self.invoke("run")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("readiness is stale", result.stderr)
-        self.assertEqual(len(self.invocations()), 2)
+        self.assertEqual(len(self.invocations()), 3)
         self.assertNotIn("rclone", "\n".join(self.invocations()))
 
     def test_missing_or_ambiguous_host_tap_manifest_prevents_outbound_vm(self) -> None:
@@ -405,7 +516,7 @@ class ImmichBackupTests(unittest.TestCase):
         missing = self.invoke("run")
         self.assertNotEqual(missing.returncode, 0)
         self.assertIn("manifest is unavailable", missing.stderr)
-        self.assertEqual(len(self.invocations()), 2)
+        self.assertEqual(len(self.invocations()), 3)
 
         self.podman_log.write_text("")
         self.host_tap_manifest.write_text(
@@ -415,7 +526,7 @@ class ImmichBackupTests(unittest.TestCase):
         ambiguous = self.invoke("run")
         self.assertNotEqual(ambiguous.returncode, 0)
         self.assertIn("exactly one manifest entry", ambiguous.stderr)
-        self.assertEqual(len(self.invocations()), 2)
+        self.assertEqual(len(self.invocations()), 3)
 
     def test_init_never_reinitializes_nonempty_repository(self) -> None:
         repository = self.backup / "restic"
