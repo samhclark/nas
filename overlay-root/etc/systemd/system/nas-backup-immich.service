@@ -27,4 +27,4 @@ ProtectKernelLogs=yes
 ProtectClock=yes
 LockPersonality=yes
 SystemCallArchitectures=native
-ReadWritePaths=/var/lib/nas-backups /var/lib/containers /var/lib/prometheus/node-exporter
+ReadWritePaths=/var/lib/nas-backups /var/lib/containers /var/lib/prometheus/node-exporter /sys/fs/bpf/crun

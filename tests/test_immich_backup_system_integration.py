@@ -105,6 +105,7 @@ class ImmichBackupSystemIntegrationTests(unittest.TestCase):
                 self.assertIn("ProtectHome=yes", unit)
                 self.assertIn("/var/lib/nas-backups", unit)
                 self.assertIn("/var/lib/containers", unit)
+                self.assertIn("/sys/fs/bpf/crun", unit)
                 self.assertNotIn("PrivateDevices=yes", unit)
                 self.assertNotIn("PrivateNetwork=yes", unit)
                 self.assertNotIn("CapabilityBoundingSet=", unit)
