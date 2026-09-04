@@ -12,6 +12,7 @@ receivers:
     pushover_configs:
       - user_key_file: /run/secrets/pushover-user-key
         token_file: /run/secrets/pushover-api-token
+        send_resolved: true
         priority: '0'
-        title: 'NAS Alert: {{ .GroupLabels.alertname }}'
+        title: 'NAS {{ .Status }}: {{ .GroupLabels.alertname }}'
         message: '{{ range .Alerts }}{{ .Annotations.summary }}{{ "\n" }}{{ end }}'
