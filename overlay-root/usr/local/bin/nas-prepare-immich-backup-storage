@@ -1,14 +1,17 @@
 #!/bin/bash
-# ABOUTME: Reconciles the local Immich backup repository's SELinux policy.
+# ABOUTME: Prepares Immich backup storage and its crun BPF pin directory.
 
 set -euo pipefail
 
 readonly REPOSITORY="${NAS_BACKUP_REPOSITORY:-/var/lib/nas-backups/immich/restic}"
+readonly BPF_ROOT="${NAS_BACKUP_BPF_ROOT:-/sys/fs/bpf}"
+readonly CRUN_BPF_DIRECTORY="${NAS_BACKUP_CRUN_BPF_DIRECTORY:-${BPF_ROOT}/crun}"
 readonly EXPECTED_CONTEXT="system_u:object_r:container_file_t:s0"
 readonly SEMANAGE_BIN="${SEMANAGE_BIN:-/usr/sbin/semanage}"
 readonly MATCHPATHCON_BIN="${MATCHPATHCON_BIN:-/usr/sbin/matchpathcon}"
 readonly RESTORECON_BIN="${RESTORECON_BIN:-/usr/sbin/restorecon}"
 readonly STAT_BIN="${STAT_BIN:-/usr/bin/stat}"
+readonly MKDIR_BIN="${MKDIR_BIN:-/usr/bin/mkdir}"
 
 die() {
     printf 'Immich backup storage preparation failed: %s\n' "$*" >&2
@@ -17,6 +20,15 @@ die() {
 
 [[ "${EUID}" -eq 0 ]] || die "must run as root"
 [[ -d "${REPOSITORY}" ]] || die "repository directory is missing: ${REPOSITORY}"
+
+filesystem_type="$("${STAT_BIN}" -f -c %T -- "${BPF_ROOT}")" ||
+    die "unable to inspect ${BPF_ROOT}"
+[[ "${filesystem_type}" == "bpf" ]] ||
+    die "${BPF_ROOT} is not mounted as bpffs (found ${filesystem_type})"
+"${MKDIR_BIN}" -p -m 0755 -- "${CRUN_BPF_DIRECTORY}" ||
+    die "unable to create ${CRUN_BPF_DIRECTORY}"
+[[ -d "${CRUN_BPF_DIRECTORY}" ]] ||
+    die "crun BPF directory is missing: ${CRUN_BPF_DIRECTORY}"
 
 target="${REPOSITORY//./\\.}(/.*)?"
 # bootc preserves the active /etc/selinux store across image upgrades. The

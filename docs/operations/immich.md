@@ -113,6 +113,12 @@ the same latest-snapshot gate and cleanup before pruning or replication. The
 first actual Immich recovery point and the direct-B2 restore rehearsal remain
 pending.
 
+The backup storage-preparation unit also verifies that `/sys/fs/bpf` is mounted
+as bpffs and recreates `/sys/fs/bpf/crun` before the backup or weekly maintenance
+unit starts. The directory is ephemeral kernel state; the backup services retain
+their narrow `ReadWritePaths=/sys/fs/bpf/crun` allowance for crun's pinned BPF
+filters.
+
 ## Capacity gate before a large import
 
 The current 500 GB root drive is sufficient for the existing approximately

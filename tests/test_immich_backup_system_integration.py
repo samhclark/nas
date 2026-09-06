@@ -150,6 +150,11 @@ class ImmichBackupSystemIntegrationTests(unittest.TestCase):
         preparer = (
             OVERLAY / "usr/local/bin/nas-prepare-immich-backup-storage"
         ).read_text()
+        self.assertIn("readonly BPF_ROOT=", preparer)
+        self.assertIn("readonly CRUN_BPF_DIRECTORY=", preparer)
+        self.assertIn('"${STAT_BIN}" -f -c %T', preparer)
+        self.assertIn('filesystem_type}" == "bpf"', preparer)
+        self.assertIn("-p -m 0755", preparer)
         self.assertIn('"${MATCHPATHCON_BIN}" -n -- "${REPOSITORY}"', preparer)
         self.assertIn(
             '"${SEMANAGE_BIN}" fcontext -a -t container_file_t -r s0 "${target}"',
@@ -175,6 +180,7 @@ class ImmichBackupSystemIntegrationTests(unittest.TestCase):
             "After=local-fs.target systemd-tmpfiles-setup.service",
             preparation_unit,
         )
+        self.assertIn("RequiresMountsFor=/sys/fs/bpf", preparation_unit)
         self.assertIn("WantedBy=multi-user.target", preparation_unit)
         for name in (
             "nas-backup-immich.service",
