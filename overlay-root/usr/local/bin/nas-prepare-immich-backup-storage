@@ -23,7 +23,7 @@ die() {
 
 filesystem_type="$("${STAT_BIN}" -f -c %T -- "${BPF_ROOT}")" ||
     die "unable to inspect ${BPF_ROOT}"
-[[ "${filesystem_type}" == "bpf" ]] ||
+[[ "${filesystem_type}" == "bpf_fs" ]] ||
     die "${BPF_ROOT} is not mounted as bpffs (found ${filesystem_type})"
 "${MKDIR_BIN}" -p -m 0755 -- "${CRUN_BPF_DIRECTORY}" ||
     die "unable to create ${CRUN_BPF_DIRECTORY}"
