@@ -69,7 +69,7 @@
       ],
       "minimumReleaseAge": "3 days",
       "minimumReleaseAgeBehaviour": "timestamp-optional",
-      "prCreation": "not-pending",
+      "prCreation": "immediate",
       "internalChecksFilter": "strict"
     },
     {
