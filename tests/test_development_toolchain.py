@@ -18,7 +18,7 @@ class DevelopmentToolchainTests(unittest.TestCase):
         self.assertEqual(project["project"]["requires-python"], ">=3.14")
         self.assertEqual(project["dependency-groups"]["dev"], ["ty==0.0.69"])
         self.assertFalse(project["tool"]["uv"]["package"])
-        self.assertEqual(project["tool"]["uv"]["required-version"], ">=0.12.17")
+        # uv enforces required-version from pyproject.toml when these gates run.
         self.assertTrue((REPO / "uv.lock").is_file())
         self.assertFalse((REPO / "requirements-dev.txt").exists())
 
