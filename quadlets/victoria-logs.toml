@@ -15,7 +15,7 @@ subid-start = 512700000
 display-name = "VictoriaLogs"
 
 [container]
-image = "docker.io/victoriametrics/victoria-logs:v1.52.0@sha256:47b820890d64c4575a2a0a46415dcd8a4fd59a0f1fcd6a377693d7aea639442e"
+image = "docker.io/victoriametrics/victoria-logs:v1.53.0@sha256:251121fa882af99b95ba0c230a4a2f412ea602d2698c64a96c58dc9842bb755d"
 network = "host"
 container-user = 0
 exec = "-storageDataPath=/victoria-logs-data -retentionPeriod=7d -retention.maxDiskUsagePercent=80 -search.maxQueryTimeRange=7d -search.maxQueryDuration=15s -search.maxConcurrentRequests=2 -httpListenAddr=0.0.0.0:9428"
