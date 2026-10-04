@@ -5,7 +5,7 @@ Documentation=https://grafana.com/docs/grafana/latest/
 
 [Container]
 ContainerName=grafana
-Image=docker.io/grafana/grafana:13.2.0@sha256:3fd54ae1214669f8355f065ec9f6445d5279a3d77095ab048ca045685272429b
+Image=docker.io/grafana/grafana:13.2.3@sha256:b28bae15e219c998fb0e0424ed724930cc61b1f61fb404d47c862f9a23f9e572
 LogDriver=journald
 PodmanArgs=--runtime=krun
 Annotation=krun.cpus=2
