@@ -5,7 +5,7 @@ Documentation=https://docs.victoriametrics.com/vmalert/
 
 [Container]
 ContainerName=vmalert
-Image=docker.io/victoriametrics/vmalert:v1.150.0@sha256:c6e6c1ef6e43c09510dd0aff264bf0ea319c1bdfced1ccc79dad1545950a7989
+Image=docker.io/victoriametrics/vmalert:v1.153.0@sha256:0c1c7718b54b03e8559d0f257f31f1bd79ef7fa32ac6e9ed90d7b92a74a4fe76
 LogDriver=journald
 PodmanArgs=--runtime=krun
 Annotation=krun.cpus=1
