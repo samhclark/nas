@@ -60,9 +60,11 @@ class VictoriaLogsIntegrationTests(unittest.TestCase):
         self.assertFalse(storage.atime)
 
     def test_image_and_runtime_limits_are_pinned(self):
+        # Renovate owns the release version; enforce image identity and pinning.
         self.assertRegex(
             self.service.container.image,
-            r"victoria-logs:v1\.52\.0@sha256:[0-9a-f]{64}$",
+            r"^docker\.io/victoriametrics/victoria-logs:"
+            r"v[0-9]+\.[0-9]+\.[0-9]+@sha256:[0-9a-f]{64}$",
         )
         command = self.service.container.exec
         assert command is not None
