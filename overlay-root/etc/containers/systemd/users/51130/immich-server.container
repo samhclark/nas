@@ -5,7 +5,7 @@ Documentation=https://docs.immich.app/
 
 [Container]
 ContainerName=immich-server
-Image=ghcr.io/immich-app/immich-server:v3.1.0@sha256:b434cb9287eea1471c9974845914d4dd328c9c2d652e446ed4930f99944f0ceb
+Image=ghcr.io/immich-app/immich-server:v3.3.0@sha256:be56bc12c17a84617a979ad1eab1d9105bbec1955ffa7da09b3f9cf79d3bd09d
 LogDriver=journald
 PodmanArgs=--runtime=krun
 Annotation=krun.cpus=4
