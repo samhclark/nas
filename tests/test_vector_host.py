@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import unittest
 from pathlib import Path
 
@@ -77,14 +78,23 @@ class VectorHostTests(unittest.TestCase):
                 self.assertIn(directive, SERVICE)
 
     def test_vector_image_is_digest_pinned_and_validated(self):
-        self.assertIn(
-            "docker.io/timberio/vector:0.57.0-distroless-static@sha256:",
-            CONTAINERFILE,
-        )
-        self.assertIn(
-            "docker.io/timberio/vector:0.57.0-debian@sha256:",
-            CONTAINERFILE,
-        )
+        versions = {}
+        for stage, variant in (
+            ("vector", "distroless-static"),
+            ("vector-license", "debian"),
+        ):
+            with self.subTest(stage=stage):
+                match = re.search(
+                    r"^FROM docker\.io/timberio/vector:"
+                    rf"([0-9]+\.[0-9]+\.[0-9]+)-{variant}"
+                    rf"@sha256:[0-9a-f]{{64}} AS {stage}$",
+                    CONTAINERFILE,
+                    re.MULTILINE,
+                )
+                self.assertIsNotNone(match)
+                assert match is not None
+                versions[stage] = match[1]
+        self.assertEqual(versions["vector"], versions["vector-license"])
         self.assertIn(
             "COPY --from=vector /usr/local/bin/vector /usr/local/bin/vector",
             CONTAINERFILE,
@@ -94,8 +104,12 @@ class VectorHostTests(unittest.TestCase):
             CONTAINERFILE,
         )
         self.assertIn(
-            '/usr/local/bin/vector --version | grep -F "vector 0.57.0"',
+            f'/usr/local/bin/vector --version | grep -F "vector {versions["vector"]}"',
             CONTAINERFILE,
+        )
+        self.assertIn(
+            f"/usr/local/bin/vector --version | grep -Fq 'vector {versions['vector']}'",
+            IMAGE_CONTRACT,
         )
         self.assertIn("--config-yaml /etc/vector/vector.yaml", CONTAINERFILE)
         self.assertIn("--no-environment --skip-healthchecks", CONTAINERFILE)
