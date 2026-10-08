@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 import unittest
 from pathlib import Path
 
@@ -30,11 +31,30 @@ class ImmichDeploymentTests(unittest.TestCase):
             {"server", "database", "cache", "machine-learning"},
         )
         self.assertTrue(all(component.active_tap for component in components.values()))
-        self.assertEqual(
-            components["server"].container.image,
-            "ghcr.io/immich-app/immich-server:v3.1.0@sha256:"
-            "b434cb9287eea1471c9974845914d4dd328c9c2d652e446ed4930f99944f0ceb",
-        )
+
+    def test_server_and_cpu_machine_learning_use_the_same_pinned_release(self):
+        components = {
+            service.info.role: service
+            for service in self.fleet.services
+            if service.info.application == "immich"
+        }
+        versions = {}
+        for role, repository in (
+            ("server", "immich-server"),
+            ("machine-learning", "immich-machine-learning"),
+        ):
+            with self.subTest(role=role):
+                # Renovate owns versions and digests; retain image identity,
+                # stable releases, and the CPU-only machine-learning variant.
+                match = re.fullmatch(
+                    rf"ghcr\.io/immich-app/{repository}:"
+                    r"(v[0-9]+\.[0-9]+\.[0-9]+)@sha256:[0-9a-f]{64}",
+                    components[role].container.image,
+                )
+                self.assertIsNotNone(match)
+                assert match is not None
+                versions[role] = match[1]
+        self.assertEqual(versions["server"], versions["machine-learning"])
 
     def test_server_combines_storage_secrets_and_named_dependencies(self):
         server = self.artifacts[
