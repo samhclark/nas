@@ -18,6 +18,9 @@ ADD https://github.com/opencontainers/runtime-spec/archive/d64c1d945da7cf6970061
 ADD https://github.com/opencontainers/image-spec/archive/26647a49f642c7d22a1cd3aa0a48e4650a542269.tar.gz \
     /tmp/image-spec-26647a49f642c7d22a1cd3aa0a48e4650a542269.tar.gz
 COPY patches/crun/0001-krun-add-tap-network-annotation.patch /tmp/
+COPY patches/crun/0002-krun-add-guest-bootstrap-root-annotation.patch /tmp/
+COPY patches/crun/krun-guest-bootstrap.h /tmp/krun-guest-bootstrap.h
+COPY patches/crun/krun-guest-bootstrap-test.c /tmp/krun-guest-bootstrap-test.c
 
 RUN dnf install -y --setopt=install_weak_deps=False \
         autoconf automake criu-devel gcc git-core glibc-static gperf \
@@ -57,13 +60,23 @@ RUN /bin/bash -c 'set -euo pipefail; \
     cd /tmp/crun; \
     patch --batch --forward -p1 \
         < /tmp/0001-krun-add-tap-network-annotation.patch; \
+    install -m 0644 /tmp/krun-guest-bootstrap.h \
+        /tmp/crun/src/libcrun/handlers/krun-guest-bootstrap.h; \
+    patch --batch --forward -p1 \
+        < /tmp/0002-krun-add-guest-bootstrap-root-annotation.patch; \
+    gcc -std=gnu11 -Wall -Wextra -Werror \
+        -I/tmp/crun/src/libcrun/handlers \
+        /tmp/krun-guest-bootstrap-test.c -o /tmp/krun-guest-bootstrap-test \
+        $(pkg-config --cflags --libs json-c); \
+    /tmp/krun-guest-bootstrap-test; \
     autoreconf -fi; \
     ./configure --disable-silent-rules --with-libkrun --with-wasmedge \
         --enable-embedded-blake3; \
     make -j "$(nproc)"; \
     install -D -m 0755 crun /out/usr/bin/crun; \
     /out/usr/bin/crun --version | grep -F "crun version 1.29.1"; \
-    strings /out/usr/bin/crun | grep -Fx "krun.tap_name"'
+    strings /out/usr/bin/crun | grep -Fx "krun.tap_name"; \
+    strings /out/usr/bin/crun | grep -Fx "krun.guest_bootstrap_root"'
 
 #####
 #
@@ -235,6 +248,7 @@ RUN /bin/bash -c 'set -euo pipefail; \
     [[ "$(readlink /usr/bin/krun)" == "crun" ]]; \
     /usr/bin/crun --version | grep -F "crun version 1.29.1"; \
     grep -aFq "krun.tap_name" /usr/bin/crun; \
+    grep -aFq "krun.guest_bootstrap_root" /usr/bin/crun; \
     restorecon -F /usr/bin/crun'
 
 RUN ["bootc", "container", "lint"]

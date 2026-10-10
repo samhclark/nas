@@ -39,6 +39,10 @@ ram-mib = 512
 network = "tap"
 ipv4 = "10.253.12.2/30"
 probe-endpoint = "redis"
+# Bootstrap only the guest as root to set its private overcommit sysctl, then
+# the adapter drops to UID/GID 1000. The host VMM retains the mapped OCI user
+# above so it can open this service's TAP and preserve data ownership.
+guest-bootstrap-root = true
 
 [[container.endpoints]]
 name = "redis"

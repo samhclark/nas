@@ -369,6 +369,7 @@ name = "token"
         self.assertEqual(str(service.tap_gateway), "10.253.99.1/30")
         self.assertEqual(service.tap_spec.probe_endpoint, "http")
         self.assertEqual(service.tap_spec.probe_timeout_sec, 120)
+        self.assertFalse(service.tap_spec.guest_bootstrap_root)
         artifacts = {
             artifact.path: artifact.content
             for artifact in compile_fleet(Fleet.build([service]))
@@ -379,6 +380,59 @@ name = "token"
         self.assertIn("/dev/tcp/10.253.99.2/8080", unit)
         self.assertNotIn("/dev/tcp/10.253.99.2/8081", unit)
         self.assertIn("for i in {1..120}", unit)
+        self.assertNotIn("krun.guest_bootstrap_root", unit)
+
+    def test_guest_root_bootstrap_retains_the_host_mapped_identity(self):
+        source = service_toml(
+            container='''network = "host"
+container-user = 1000
+entrypoint = "/usr/share/nas/service/entrypoint.sh"
+[[container.endpoints]]
+name = "http"
+port = 8080''',
+            krun='''enabled = true
+cpus = 1
+ram-mib = 128
+network = "tap"
+ipv4 = "10.253.99.2/30"
+probe-endpoint = "http"
+guest-bootstrap-root = true''',
+        )
+        service = self.load(source)
+        self.assertTrue(service.tap_spec.guest_bootstrap_root)
+        unit = next(
+            artifact.content
+            for artifact in compile_fleet(Fleet.build([service]))
+            if artifact.path.name == "service.container"
+        )
+        self.assertIn("Annotation=krun.guest_bootstrap_root=1", unit)
+        self.assertIn("User=1000:1000\n", unit)
+        self.assertIn("UserNS=keep-id:uid=1000,gid=1000", unit)
+        for replacement in (
+            'container-user = 0',
+            '',
+        ):
+            self.assert_invalid(
+                source.replace('container-user = 1000', replacement),
+                "requires a positive container-user",
+            )
+        self.assert_invalid(
+            source.replace('entrypoint = "/usr/share/nas/service/entrypoint.sh"', ''),
+            "explicit entrypoint",
+        )
+        self.assert_invalid_field(
+            source.replace('guest-bootstrap-root = true', 'guest-bootstrap-root = 1'),
+            "[krun].guest-bootstrap-root",
+        )
+        self.assert_invalid(
+            service_toml(
+                krun='''enabled = true
+cpus = 1
+ram-mib = 128
+guest-bootstrap-root = true''',
+            ),
+            "TAP-only fields",
+        )
 
     def test_tap_probe_must_reference_a_declared_tcp_endpoint(self):
         container = (

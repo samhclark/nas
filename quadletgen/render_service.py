@@ -59,6 +59,8 @@ def container_unit(service: Service, fleet: Fleet) -> str:
             lines.append("Annotation=krun.use_passt=1")
         elif isinstance(krun, KrunTap):
             lines.append(f"Annotation=krun.tap_name={service.tap_name}")
+            if krun.guest_bootstrap_root:
+                lines.append("Annotation=krun.guest_bootstrap_root=1")
         lines.append("StopSignal=SIGINT")
     if container.network is not None:
         lines.append(f"Network={container.network}")

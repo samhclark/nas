@@ -421,6 +421,7 @@ def _parse_krun(raw: object, name: str, container: ContainerSpec) -> KrunSpec | 
             "ipv4",
             "probe-endpoint",
             "probe-timeout-sec",
+            "guest-bootstrap-root",
             "host-access",
             "egress",
         },
@@ -452,6 +453,7 @@ def _parse_krun(raw: object, name: str, container: ContainerSpec) -> KrunSpec | 
             "probe-endpoint",
             "probe-timeout-sec",
             "host-access",
+            "guest-bootstrap-root",
         )
     )
     if network is KrunNetwork.TAP:
@@ -477,6 +479,10 @@ def _parse_krun(raw: object, name: str, container: ContainerSpec) -> KrunSpec | 
                 f"{path}.probe-timeout-sec",
             ),
             host_access=_parse_host_access(table.get("host-access"), name),
+            guest_bootstrap_root=_boolean(
+                table.get("guest-bootstrap-root", False),
+                f"{path}.guest-bootstrap-root",
+            ),
             egress=egress,
         )
     if tap_only_present:

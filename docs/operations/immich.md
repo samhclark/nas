@@ -144,6 +144,27 @@ successful local backup and B2 mirror.
 
 ## Image compatibility preflight
 
+Valkey's adapter needs guest root briefly to set the microVM-private
+`vm.overcommit_memory=1` before dropping to UID/GID 1000. Its Quadlet retains
+`User=1000:1000` and the matching `keep-id` mapping for the host VMM and
+service-owned TAP, and explicitly requests `guest-bootstrap-root = true` for
+the guest entrypoint. The patched crun handler changes only the guest config
+copy; the adapter never changes the host sysctl or storage ownership.
+
+The October 10 startup failure exposed reliance on libkrun's earlier implicit
+guest-root entry. [libkrun's UID/GID parsing change](https://github.com/libkrun/libkrun/commit/20aa1ef06e31b66e6860a05512a99e40caf186fc),
+released in 1.19.5, applies the OCI UID before executing the adapter. Logs showed
+the same Valkey 9.1.2 digest starting successfully as guest root on October 8,
+then refusing to start as UID 1000 with overcommit unset after the October 10
+reboot. The explicit bootstrap request removes that runtime-version assumption.
+
+A disposable local VM test with libkrun 1.19.6 and patched crun 1.29.1 reproduced
+the exact failure without the annotation. With the annotation, the same pinned
+Valkey image set the real guest sysctl to 1, ran the server as 1000:1000,
+answered PING, and saved a snapshot with unchanged host ownership. This test
+used isolated networking; production TAP attachment and post-update recovery
+still require NAS evidence.
+
 PostgreSQL uses Immich's public-source companion image because it packages the
 exact PostgreSQL, pgvector, VectorChord, and tuning contract supported by this
 Immich release. Valkey uses the official upstream image. Both remain pinned by
@@ -176,13 +197,20 @@ state with checksums and requires both PostgreSQL and Valkey to answer under
 their declared users. PostgreSQL is started twice: once as 1000:1000 and once
 with a 0:0 process identity that emulates libkrun guest-root entry. Both runs
 exercise the adapter's respective branch, require readiness and enabled
-checksums, and verify that host ownership does not change. It does not prove
+checksums, and verify that host ownership does not change. Valkey emulates the
+explicit guest-root bootstrap with a disposable overcommit file, requires a
+PONG, verifies the server runs as 1000:1000, and saves test state without host
+ownership drift. It does not prove
 that the image behaves the same under libkrun.
 
-The second stage, `make probe-krun-user`, runs the pinned image under libkrun
+The second stage, `make probe-krun-user`, runs the pinned database image under libkrun
 and classifies the observed entrypoint identity as either guest root or
 1000:1000. Either result is supported by the adapter; any other identity is a
-compatibility failure that must be investigated before deployment. It does not
+compatibility failure that must be investigated before deployment. It also
+requires the pinned Valkey image to observe guest UID/GID 0:0 when its bootstrap
+annotation is supplied, while retaining the host-side 1000:1000 OCI request and
+keep-id mapping. An unpatched runtime that honors UID 1000 fails this check.
+It does not
 exercise PostgreSQL or Valkey readiness, checksums, writable paths, or data
 continuity. The probe remains opt-in because it depends on the local libkrun
 runtime and networked image access.

@@ -344,7 +344,7 @@ def smoke_valkey(spec: Service, temporary: Path) -> None:
     overcommit.write_text("0\n")
     asset = materialize_asset(spec, temporary)
     # Ordinary rootless crun cannot change the host-global overcommit sysctl.
-    # Emulate libkrun's observed guest-root identity and give the adapter a
+    # Emulate the explicit guest-root bootstrap and give the adapter a
     # disposable file standing in for the guest-private procfs value.
     arguments = container_arguments(
         spec,
@@ -366,11 +366,26 @@ def smoke_valkey(spec: Service, temporary: Path) -> None:
         arguments.extend(spec.container.exec.split())
 
     print(f"smoke Valkey: {spec.container.image}", flush=True)
+    before = ownership_snapshot(data)
     try:
         run(arguments, capture=True)
         wait_for_exec(name, ["valkey-cli", "ping"], "Valkey")
         if overcommit.read_text().strip() != "1":
             raise RuntimeError("Valkey entrypoint did not enable memory overcommit")
+        identity = run(
+            ["exec", name, "stat", "--format=%u:%g", "/proc/1"],
+            capture=True,
+        )
+        if identity.stdout.strip() != "1000:1000":
+            raise RuntimeError(
+                "Valkey did not drop guest privileges: "
+                f"{identity.stdout.strip()}"
+            )
+        run(["exec", name, "valkey-cli", "SET", "nas-smoke", "ownership"], capture=True)
+        run(["exec", name, "valkey-cli", "SAVE"], capture=True)
+        if not (data / "dump.rdb").is_file():
+            raise RuntimeError("Valkey smoke did not persist its test data")
+        assert_host_ownership(data, before, "Valkey smoke data")
     finally:
         run(["rm", "--force", "--ignore", name], capture=True, timeout=30)
 

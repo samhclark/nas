@@ -87,6 +87,12 @@ class ImmichDeploymentTests(unittest.TestCase):
             valkey,
         )
         self.assertIn("Exec=--port 6379", valkey)
+        self.assertIn("Annotation=krun.guest_bootstrap_root=1", valkey)
+        self.assertIn("User=1000:1000\n", valkey)
+        self.assertIn("UserNS=keep-id:uid=1000,gid=1000", valkey)
+        for path, content in self.artifacts.items():
+            if path.suffix == ".container" and path.name != "immich-valkey.container":
+                self.assertNotIn("krun.guest_bootstrap_root", content)
         self.assertIn(
             "Volume=/usr/share/nas/immich-valkey:/usr/share/nas/immich-valkey:ro",
             valkey,

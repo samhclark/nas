@@ -12,6 +12,7 @@ PodmanArgs=--runtime=krun
 Annotation=krun.cpus=1
 Annotation=krun.ram_mib=512
 Annotation=krun.tap_name=krun-51150
+Annotation=krun.guest_bootstrap_root=1
 StopSignal=SIGINT
 Network=host
 AddDevice=/dev/net/tun

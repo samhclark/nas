@@ -158,7 +158,7 @@ smoke-arr-images: ## Run opt-in startup smoke tests for the four authored *arr i
 		$(UV_RUN) python scripts/smoke-arr-images.py
 
 .PHONY: probe-krun-user
-probe-krun-user: ## Probe the pinned Immich database image's effective krun user
+probe-krun-user: ## Probe database identity and Valkey guest-root bootstrap under krun
 	@CONTAINER_CLI="$(PODMAN)" $(UV_RUN) python scripts/probe-krun-user.py
 
 .PHONY: preflight-immich-images

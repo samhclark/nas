@@ -106,9 +106,10 @@ behavior as a versioned image interface; test those properties again whenever
 the image digest changes.
 
 The OCI `User=` request is a contract, not evidence about what every virtual
-machine-backed runtime actually supplies to the entrypoint. In particular,
-libkrun may start an image entrypoint as guest root even when the generated
-unit requests `User=1000:1000`. Do not solve that by making the service
+machine-backed runtime actually supplies to the entrypoint. libkrun versions
+before 1.19.5 started the entrypoint as guest root even when the generated
+unit requested `User=1000:1000`; 1.19.5 began honoring that UID/GID before
+launching the entrypoint. Do not solve an identity mismatch by making the service
 rootful, weakening storage ownership, or assuming the upstream wrapper will
 drop to the right identity. For a demonstrated image-specific mismatch, add a
 narrow image-controlled adapter as a read-only asset and keep the normal
@@ -122,6 +123,16 @@ the VMM can open the TAP with the service's mapped credentials. An adapter may
 still observe guest root after that request and must retain its explicit
 guest-root handoff, but selecting container root in the Quadlet or smoke command
 cannot test or repair the TAP attachment boundary.
+
+For a trusted adapter that must perform privileged guest initialization before
+dropping to the declared user, `[krun].guest-bootstrap-root = true` emits the
+opt-in `krun.guest_bootstrap_root=1` annotation. The patched handler changes
+only the UID/GID in the guest's copied `/.krun_config.json` to 0:0; the host OCI
+spec, user namespace, and VMM identity remain unchanged. The schema requires a
+positive `container-user`, an explicit entrypoint, and TAP networking. The
+adapter must drop guest privileges before starting the application. Valkey uses
+this to set the guest-private `vm.overcommit_memory=1`, then executes the server
+as 1000:1000. Other services retain the runtime's normal identity behavior.
 
 Immich PostgreSQL is the current example. Its database Quadlet requests
 `User=1000:1000` and mounts the image-controlled

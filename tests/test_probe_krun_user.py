@@ -34,6 +34,15 @@ class KrunUserProbeTests(unittest.TestCase):
             "guest-root-fallback",
         )
 
+    def test_valkey_bootstrap_requests_guest_root_without_changing_host_user(self):
+        command = PROBE.probe_command(
+            "example/image@sha256:abc", "fake-podman", guest_bootstrap_root=True,
+        )
+        self.assertIn("--annotation=krun.guest_bootstrap_root=1", command)
+        self.assertIn("--user=1000:1000", command)
+        self.assertIn("--userns=keep-id:uid=1000,gid=1000", command)
+        self.assertNotIn("--user=0:0", command)
+
     def test_classifies_honored_identity(self):
         self.assertEqual(
             PROBE.classify_identity("uid=1000 gid=1000 groups=1000\n"),

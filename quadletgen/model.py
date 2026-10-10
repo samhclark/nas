@@ -247,6 +247,7 @@ class KrunTap:
     ipv4: ipaddress.IPv4Interface
     probe_endpoint: str
     probe_timeout_sec: int = 30
+    guest_bootstrap_root: bool = False
     host_access: tuple[int, ...] = ()
     egress: Literal["mullvad"] | None = None
     network: Literal[KrunNetwork.TAP] = field(
@@ -957,6 +958,19 @@ def _validate_krun(service: Service) -> None:
         return
     if not isinstance(krun, KrunTap):
         _fail(path, "has an unsupported network implementation")
+    if not isinstance(krun.guest_bootstrap_root, bool):
+        _fail(f"{path}.guest-bootstrap-root", "must be a boolean")
+    if krun.guest_bootstrap_root:
+        if (
+            service.container.container_user is None
+            or service.container.container_user <= 0
+            or service.container.entrypoint is None
+        ):
+            _fail(
+                f"{path}.guest-bootstrap-root",
+                "requires a positive container-user and an explicit entrypoint "
+                "that drops guest privileges",
+            )
     if service.container.network != "host":
         _fail(path, 'network = "tap" requires [container].network = "host"')
     if not isinstance(krun.ipv4, ipaddress.IPv4Interface):
