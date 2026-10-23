@@ -16,7 +16,7 @@ subid-start = 512500000
 display-name = "VictoriaMetrics"
 
 [container]
-image = "docker.io/victoriametrics/victoria-metrics:v1.153.0@sha256:5eff7af5341e401471002f58d106d399e614a62f3d240f2dbc21901e49eed5dd"
+image = "docker.io/victoriametrics/victoria-metrics:v1.154.1@sha256:c7884f32920dd45a9d86542a717227e63af03e060e53bbf8031e6e6fd0e1e05d"
 log-driver = "journald"
 network = "host"
 container-user = 0
