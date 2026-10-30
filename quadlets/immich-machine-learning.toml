@@ -15,7 +15,7 @@ subid-start = 511600000
 display-name = "Immich machine learning"
 
 [container]
-image = "ghcr.io/immich-app/immich-machine-learning:v3.3.1@sha256:513c831cfb010ad319341a0c86b42c575a0d5b688d3e8cae346ee624074a58ed"
+image = "ghcr.io/immich-app/immich-machine-learning:v3.3.5@sha256:5b28c9352c8374b8a1ed96fbdd8d6755fea6e43510ec43fdf6538aa02ea40f56"
 log-driver = "journald"
 network = "host"
 container-user = 1000
