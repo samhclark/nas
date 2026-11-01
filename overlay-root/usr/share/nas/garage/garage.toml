@@ -36,6 +36,8 @@ api_bind_addr = "[::]:3900"
 s3_region = "garage"
 # Virtual-hosted style bucket addressing: <bucket>.s3.i.samhclark.com
 root_domain = ".s3.i.samhclark.com"
+# External endpoint behind Caddy, which terminates TLS.
+public_endpoint = "https://s3.i.samhclark.com"
 
 [s3_web]
 # Static website hosting endpoint
