@@ -37,7 +37,10 @@ here rather than reading rollout plans or evidence logs.
   deployed Sonarr, Radarr, Prowlarr, and SABnzbd topology, configuration, and
   operator runbook
 - [`investigations/jellyfin-hardware-transcoding.md`](investigations/jellyfin-hardware-transcoding.md)
-  — the one active investigation
+  — VM-isolated hardware transcoding investigation
+- [`investigations/sabnzbd-network-stall.md`](investigations/sabnzbd-network-stall.md)
+  — deferred receive-stall investigation, incident evidence, and unconfirmed
+  libkrun notification hypothesis
 
 ## Proposals
 
