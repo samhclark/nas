@@ -15,7 +15,7 @@ subid-start = 512600000
 display-name = "Jellyfin exporter"
 
 [container]
-image = "docker.io/library/python:3.15.2-slim@sha256:c4158543ecb725b99e57d129dfd43d761d4c43e4577b5e23326aabb223cf7f4e"
+image = "docker.io/library/python:3.15.2-slim@sha256:e97b88e416c3c01eb427b21fd8cd3ebf006e6ee38afcfcc3cae1c54ee2ab0a75"
 log-driver = "journald"
 network = "host"
 container-user = 0
