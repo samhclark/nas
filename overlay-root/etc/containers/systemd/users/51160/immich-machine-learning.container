@@ -5,7 +5,7 @@ Documentation=https://docs.immich.app/features/ml-hardware-acceleration/
 
 [Container]
 ContainerName=immich-machine-learning
-Image=ghcr.io/immich-app/immich-machine-learning:v3.3.5@sha256:5b28c9352c8374b8a1ed96fbdd8d6755fea6e43510ec43fdf6538aa02ea40f56
+Image=ghcr.io/immich-app/immich-machine-learning:v3.4.1@sha256:8adebf414256f6e4f837bfbb66fa94f14f4da7260e3a1d65cbba49e4e35d8764
 LogDriver=journald
 PodmanArgs=--runtime=krun
 Annotation=krun.cpus=4
