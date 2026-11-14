@@ -18,7 +18,7 @@ display-name = "Prowlarr"
 mapped-container-id = 1000
 
 [container]
-image = "lscr.io/linuxserver/prowlarr:2.5.2.5491-ls156@sha256:1295cff29d10b486c0d8324d1559a552140a5932bf8b3d87e398654414f63f92"
+image = "lscr.io/linuxserver/prowlarr:2.7.0.5723-ls168@sha256:6660787a99b2e58203539583663c973b48979fc00ff2cb78dc0ea17429e1f6ef"
 log-driver = "journald"
 network = "host"
 container-user = 1000
