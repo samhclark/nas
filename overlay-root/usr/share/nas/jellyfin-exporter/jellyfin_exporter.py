@@ -13,6 +13,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
+from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 
@@ -217,7 +218,13 @@ def query_sessions() -> list[dict[str, Any]]:
     token = API_KEY_FILE.read_text(encoding="utf-8").strip()
     if not token:
         raise RuntimeError(f"API key file is empty: {API_KEY_FILE}")
-    request = Request(f"{JELLYFIN_URL}/Sessions", headers={"X-Emby-Token": token, "Accept": "application/json"})
+    request = Request(
+        f"{JELLYFIN_URL}/Sessions",
+        headers={
+            "Authorization": f'MediaBrowser Token="{quote(token, safe="")}"',
+            "Accept": "application/json",
+        },
+    )
     with urlopen(request, timeout=API_TIMEOUT_SECONDS) as response:
         payload = json.load(response)
     if not isinstance(payload, list):
