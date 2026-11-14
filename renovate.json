@@ -61,6 +61,16 @@
   ],
   "packageRules": [
     {
+      "description": "Track stable Jellyfin releases across the change from three-part to two-part versions",
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "docker.io/jellyfin/jellyfin"
+      ],
+      "versioning": "regex:^(?<major>\\d+)\\.(?<minor>\\d+)(?:\\.(?<patch>\\d+))?$"
+    },
+    {
       "description": "Track stable LinuxServer app versions and image rebuilds without freezing the ls suffix",
       "matchDatasources": [
         "docker"
