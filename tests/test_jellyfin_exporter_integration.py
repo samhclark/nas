@@ -33,7 +33,6 @@ class JellyfinExporterIntegrationTests(unittest.TestCase):
     def test_exporter_is_loopback_only_and_reads_key_from_file(self):
         self.assertIn('LISTEN_HOST = os.environ.get("LISTEN_HOST", "127.0.0.1")', EXPORTER)
         self.assertIn('JELLYFIN_API_KEY_FILE", "/run/secrets/jellyfin-api-key"', EXPORTER)
-        self.assertIn('headers={"X-Emby-Token": token', EXPORTER)
 
     def test_image_labels_exporter_assets_for_container_access(self):
         self.assertIn(

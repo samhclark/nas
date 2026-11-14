@@ -2,8 +2,10 @@
 # repository-owned Jellyfin Sessions API Prometheus exporter.
 
 import importlib.util
+import io
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 REPO = Path(__file__).resolve().parents[1]
@@ -79,6 +81,37 @@ DIRECT_SESSION = {
 
 
 class JellyfinExporterTests(unittest.TestCase):
+    def test_sessions_query_uses_mediabrowser_authorization(self):
+        with (
+            patch.object(EXPORTER, "API_KEY_FILE") as key_file,
+            patch.object(EXPORTER, "urlopen", return_value=io.BytesIO(b"[]")) as open_url,
+        ):
+            key_file.read_text.return_value = "test-api-key\n"
+
+            self.assertEqual(EXPORTER.query_sessions(), [])
+
+        request = open_url.call_args.args[0]
+        self.assertEqual(request.full_url, f"{EXPORTER.JELLYFIN_URL}/Sessions")
+        self.assertEqual(request.get_method(), "GET")
+        self.assertEqual(request.get_header("Authorization"), 'MediaBrowser Token="test-api-key"')
+        self.assertEqual(request.get_header("Accept"), "application/json")
+        self.assertIsNone(request.get_header("X-emby-token"))
+        self.assertEqual(open_url.call_args.kwargs["timeout"], EXPORTER.API_TIMEOUT_SECONDS)
+
+    def test_authorization_token_is_encoded_as_a_quoted_parameter(self):
+        with (
+            patch.object(EXPORTER, "API_KEY_FILE") as key_file,
+            patch.object(EXPORTER, "urlopen", return_value=io.BytesIO(b"[]")) as open_url,
+        ):
+            key_file.read_text.return_value = 'key"with,parameters'
+            EXPORTER.query_sessions()
+
+        request = open_url.call_args.args[0]
+        self.assertEqual(
+            request.get_header("Authorization"),
+            'MediaBrowser Token="key%22with%2Cparameters"',
+        )
+
     def test_transcode_exposes_source_target_and_diagnostic_values(self):
         rendered = EXPORTER.render_metrics([TRANSCODING_SESSION])
 
