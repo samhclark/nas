@@ -5,7 +5,7 @@ Documentation=https://radarr.video/
 
 [Container]
 ContainerName=radarr
-Image=lscr.io/linuxserver/radarr:6.3.0.10514-ls313@sha256:a45b5ab0f850f39edb4cc9c95bbd967b52ddc3d4574a4dfb45561177db6c88f4
+Image=lscr.io/linuxserver/radarr:6.4.4.10685-ls326@sha256:51a9ac2a9eb47afc833541e5fd6c11b86eb9f810694c22fa2429e3078e9194b2
 LogDriver=journald
 Entrypoint=/usr/share/nas/radarr/radarr-entrypoint.sh
 PodmanArgs=--runtime=krun
