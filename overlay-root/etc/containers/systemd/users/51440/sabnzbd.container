@@ -5,7 +5,7 @@ Documentation=https://sabnzbd.org/
 
 [Container]
 ContainerName=sabnzbd
-Image=lscr.io/linuxserver/sabnzbd:5.1.0-ls266@sha256:b0f9755d795913bd26ae3f3a12805668ab0681ab847a7624568559c573fc7cae
+Image=lscr.io/linuxserver/sabnzbd:5.1.3-ls281@sha256:b356d0a9b22db584e9005364ec4e752dfc081ce501b7145e9a5c0bb38e4d1ba4
 LogDriver=journald
 Entrypoint=/usr/share/nas/sabnzbd/sabnzbd-entrypoint.sh
 PodmanArgs=--runtime=krun
