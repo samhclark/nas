@@ -61,6 +61,28 @@
   ],
   "packageRules": [
     {
+      "description": "Track stable LinuxServer app versions and image rebuilds without freezing the ls suffix",
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "lscr.io/linuxserver/sonarr",
+        "lscr.io/linuxserver/radarr",
+        "lscr.io/linuxserver/prowlarr"
+      ],
+      "versioning": "regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)\\.(?<build>\\d+)-ls(?<revision>\\d+)$"
+    },
+    {
+      "description": "Track stable SABnzbd versions and LinuxServer image rebuilds",
+      "matchDatasources": [
+        "docker"
+      ],
+      "matchPackageNames": [
+        "lscr.io/linuxserver/sabnzbd"
+      ],
+      "versioning": "regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)-ls(?<build>\\d+)$"
+    },
+    {
       "description": "Wait three days before proposing version updates",
       "matchUpdateTypes": [
         "major",
