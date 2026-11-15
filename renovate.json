@@ -12,6 +12,33 @@
   "customManagers": [
     {
       "customType": "regex",
+      "description": "Update the Vector runtime and license images",
+      "managerFilePatterns": [
+        "/^Containerfile$/"
+      ],
+      "matchStrings": [
+        "FROM\\s+(?<depName>docker\\.io/timberio/vector):(?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+-(?:distroless-static|debian))@(?<currentDigest>sha256:[a-f0-9]+)\\s+AS\\s+vector(?:-license)?\\b"
+      ],
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "description": "Update Vector version assertions alongside its images",
+      "managerFilePatterns": [
+        "/^Containerfile$/",
+        "/^tests\\/image-contract\\.sh$/"
+      ],
+      "matchStrings": [
+        "grep -Fq? [\"']vector (?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)[\"']"
+      ],
+      "depNameTemplate": "vectordotdev/vector",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>[0-9]+\\.[0-9]+\\.[0-9]+)$",
+      "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
       "description": "Update rootless Quadlet container images",
       "managerFilePatterns": [
         "/^quadlets\\/[^/]+\\.toml$/"
@@ -60,6 +87,14 @@
     }
   ],
   "packageRules": [
+    {
+      "description": "Keep the Vector runtime, license material, and version assertions on the same release",
+      "matchPackageNames": [
+        "docker.io/timberio/vector",
+        "vectordotdev/vector"
+      ],
+      "groupName": "Vector"
+    },
     {
       "description": "Track stable Jellyfin releases across the change from three-part to two-part versions",
       "matchDatasources": [
