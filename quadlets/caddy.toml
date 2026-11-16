@@ -15,7 +15,7 @@ subid-start = 513100000
 display-name = "Caddy"
 
 [container]
-image = "ghcr.io/samhclark/lab-caddy:2.11.9-cf-0.2.4@sha256:d360c88de951ef4efb9c5d3062bb0cc38b0f9b221cd0f071c0d37d0519d14546"
+image = "ghcr.io/samhclark/lab-caddy:2.11.9-cf-0.2.4@sha256:90b6b42594db6e930d84ecf63c714552544f1060762952875bc8ffece78c0f83"
 log-driver = "journald"
 network = "host"
 # Avoid the host's loopback-only systemd-resolved stub inside the nested guest.
