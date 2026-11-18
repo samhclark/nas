@@ -44,8 +44,7 @@ class JellyfinExporterIntegrationTests(unittest.TestCase):
             ASSET_MANIFEST,
         )
 
-    def test_exporter_does_not_emit_sensitive_session_identity(self):
-        self.assertNotIn('session.get("UserName")', EXPORTER)
+    def test_exporter_does_not_emit_remote_address(self):
         self.assertNotIn('session.get("RemoteEndPoint")', EXPORTER)
 
 

@@ -151,10 +151,16 @@ class JellyfinExporterTests(unittest.TestCase):
         self.assertIn("jellyfin_playback_streams_active 0", rendered)
         self.assertNotIn("jellyfin_playback_info{", rendered)
 
-    def test_sensitive_user_and_network_fields_are_not_exported(self):
+    def test_username_is_exported_but_network_and_session_id_are_not(self):
         rendered = EXPORTER.render_metrics([TRANSCODING_SESSION])
 
-        self.assertNotIn("private-user", rendered)
+        for line in rendered.splitlines():
+            if line.startswith(("jellyfin_playback_info{", "jellyfin_playback_position_seconds{",
+                                "jellyfin_playback_progress_percent{", "jellyfin_transcode_bitrate_bits_per_second{",
+                                "jellyfin_transcode_framerate{", "jellyfin_transcode_completion_percent{",
+                                "jellyfin_transcode_speed_ratio{")):
+                self.assertIn('username="private-user"', line)
+        self.assertIn('username="unknown"', EXPORTER.render_metrics([DIRECT_SESSION]))
         self.assertNotIn("192.0.2.10", rendered)
         self.assertNotIn("sensitive-session-id", rendered)
         self.assertRegex(rendered, r'stream_id="[0-9a-f]{12}"')

@@ -107,6 +107,7 @@ def active_playback(session: dict[str, Any]) -> dict[str, Any] | None:
             "series": item.get("SeriesName") or "",
             "season": item.get("ParentIndexNumber") or "",
             "episode": item.get("IndexNumber") or "",
+            "username": session.get("UserName") or "unknown",
             "client": session.get("Client") or "unknown",
             "device": session.get("DeviceName") or "unknown",
             "play_method": play_method,
@@ -164,7 +165,7 @@ def render_metrics(sessions: list[dict[str, Any]], exporter_up: bool = True, err
         lines.append(metric("jellyfin_playback_streams_by_method", methods[method_name], {"play_method": method_name}))
 
     lines += [
-        "# HELP jellyfin_playback_info Current playback details; excludes usernames and remote addresses by design.",
+        "# HELP jellyfin_playback_info Current playback details; excludes remote addresses by design.",
         "# TYPE jellyfin_playback_info gauge",
         "# HELP jellyfin_transcode_bitrate_bits_per_second Current requested transcode bitrate.",
         "# TYPE jellyfin_transcode_bitrate_bits_per_second gauge",
@@ -184,6 +185,7 @@ def render_metrics(sessions: list[dict[str, Any]], exporter_up: bool = True, err
         lines.append(metric("jellyfin_playback_info", 1, playback_labels))
         detail_labels = {
             "stream_id": playback_labels["stream_id"],
+            "username": playback_labels["username"],
             "title": playback_labels["title"],
             "client": playback_labels["client"],
             "device": playback_labels["device"],

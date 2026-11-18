@@ -13,12 +13,12 @@ latency, and host CPU/memory pressure.
 
 ## Privacy and retention
 
-The exporter deliberately omits Jellyfin usernames and remote addresses. It
-does retain current titles, clients, and device names as metric labels because
-those are necessary to identify a problematic stream from a phone. Those
-labels remain in VictoriaMetrics until its normal retention removes them.
+The exporter includes Jellyfin usernames, current titles, clients, and device
+names as metric labels to identify playback and diagnose streams. These labels
+remain in VictoriaMetrics until its normal retention removes them. The exporter
+deliberately omits remote addresses.
 
-Do not add API keys, usernames, remote addresses, playback tokens, or media
+Do not add API keys, remote addresses, playback tokens, or media
 paths to metric labels. Historical viewing reports belong in Jellyfin's
 Playback Reporting plugin rather than operational time-series labels.
 
@@ -88,7 +88,7 @@ curl -G -fsS http://127.0.0.1:8428/api/v1/query \
 Open Grafana and select **Jellyfin Playback**. During a representative
 playback, confirm:
 
-- the current-playback table identifies Direct Play, Direct Stream, or
+- the current-playback table shows the username and identifies Direct Play, Direct Stream, or
   Transcode
 - source and target codecs match Jellyfin's playback-information UI
 - a transcode faster than real time remains above `1.0x`

@@ -2,7 +2,7 @@
   "annotations": {
     "list": []
   },
-  "description": "Live Jellyfin playback, transcoding, health, and host-pressure diagnostics. Playback labels intentionally exclude usernames and remote addresses.",
+  "description": "Live Jellyfin playback, transcoding, health, and host-pressure diagnostics. Playback labels intentionally exclude remote addresses.",
   "editable": false,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -290,7 +290,7 @@
       "type": "stat"
     },
     {
-      "description": "Live Sessions API view. Direct Play copies codecs unchanged. Direct Stream copies media codecs but Jellyfin does not report its output container in the session model. Usernames and remote addresses are never exported.",
+      "description": "Live Sessions API view. Direct Play copies codecs unchanged. Direct Stream copies media codecs but Jellyfin does not report its output container in the session model. Remote addresses are never exported.",
       "fieldConfig": {
         "defaults": {},
         "overrides": []
@@ -337,23 +337,24 @@
               "stream_id": true
             },
             "indexByName": {
-              "title": 0,
-              "series": 1,
-              "season": 2,
-              "episode": 3,
-              "client": 4,
-              "device": 5,
-              "play_method": 6,
-              "paused": 7,
-              "source_video_codec": 8,
-              "source_audio_codec": 9,
-              "source_resolution": 10,
-              "target_video_codec": 11,
-              "target_audio_codec": 12,
-              "target_resolution": 13,
-              "target_container": 14,
-              "hardware_acceleration": 15,
-              "transcode_reasons": 16
+              "username": 0,
+              "title": 1,
+              "series": 2,
+              "season": 3,
+              "episode": 4,
+              "client": 5,
+              "device": 6,
+              "play_method": 7,
+              "paused": 8,
+              "source_video_codec": 9,
+              "source_audio_codec": 10,
+              "source_resolution": 11,
+              "target_video_codec": 12,
+              "target_audio_codec": 13,
+              "target_resolution": 14,
+              "target_container": 15,
+              "hardware_acceleration": 16,
+              "transcode_reasons": 17
             },
             "renameByName": {
               "client": "Client",
@@ -372,7 +373,8 @@
               "target_resolution": "Target Resolution",
               "target_video_codec": "Target Video",
               "title": "Title",
-              "transcode_reasons": "Reason"
+              "transcode_reasons": "Reason",
+              "username": "User"
             }
           }
         }
@@ -481,7 +483,7 @@
       "targets": [
         {
           "expr": "jellyfin_transcode_speed_ratio{job=\"jellyfin-exporter\"}",
-          "legendFormat": "{{title}} · {{device}}",
+          "legendFormat": "{{username}} · {{title}} · {{device}}",
           "refId": "A"
         }
       ],
@@ -527,7 +529,7 @@
       "targets": [
         {
           "expr": "jellyfin_transcode_framerate{job=\"jellyfin-exporter\"}",
-          "legendFormat": "{{title}} · {{device}}",
+          "legendFormat": "{{username}} · {{title}} · {{device}}",
           "refId": "A"
         }
       ],
@@ -572,7 +574,7 @@
       "targets": [
         {
           "expr": "jellyfin_transcode_bitrate_bits_per_second{job=\"jellyfin-exporter\"}",
-          "legendFormat": "{{title}} · {{device}}",
+          "legendFormat": "{{username}} · {{title}} · {{device}}",
           "refId": "A"
         }
       ],
@@ -617,7 +619,7 @@
       "targets": [
         {
           "expr": "jellyfin_playback_position_seconds{job=\"jellyfin-exporter\"}",
-          "legendFormat": "{{title}} · {{device}}",
+          "legendFormat": "{{username}} · {{title}} · {{device}}",
           "refId": "A"
         }
       ],
@@ -662,12 +664,12 @@
       "targets": [
         {
           "expr": "jellyfin_playback_progress_percent{job=\"jellyfin-exporter\"}",
-          "legendFormat": "Playback · {{title}}",
+          "legendFormat": "Playback · {{username}} · {{title}} · {{device}}",
           "refId": "A"
         },
         {
           "expr": "jellyfin_transcode_completion_percent{job=\"jellyfin-exporter\"}",
-          "legendFormat": "Transcode · {{title}}",
+          "legendFormat": "Transcode · {{username}} · {{title}} · {{device}}",
           "refId": "B"
         }
       ],

@@ -74,8 +74,9 @@ class JellyfinIntegrationTests(unittest.TestCase):
         self.assertIn("jellyfin_playback_info", DASHBOARD)
         self.assertIn("jellyfin_transcode_speed_ratio", DASHBOARD)
         self.assertIn("jellyfin_playback_position_seconds", DASHBOARD)
-        self.assertNotIn('{{username}}', DASHBOARD)
-        self.assertNotIn('"username":', DASHBOARD)
+        self.assertIn('{{username}} · {{title}} · {{device}}', DASHBOARD)
+        self.assertIn('"username": 0', DASHBOARD)
+        self.assertIn('"username": "User"', DASHBOARD)
         self.assertNotIn('"remote_endpoint":', DASHBOARD)
 
 
