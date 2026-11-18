@@ -1,0 +1,2 @@
+kargs = ["kvm-intel.nested=0", "module_blacklist=esp4,esp6,rxrpc"]
+match-architectures = ["x86_64"]
