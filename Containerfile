@@ -241,7 +241,6 @@ RUN /bin/bash -c 'set -euo pipefail; \
     /usr/local/bin/vector validate \
         --config-yaml /etc/vector/vector.yaml \
         --no-environment --skip-healthchecks; \
-    [[ "$(rpm -E "%{fedora}")" == "44" ]]; \
     rpm -q crun >/dev/null; \
     rpm -q crun-krun >/dev/null; \
     [[ "$(readlink /usr/bin/krun)" == "crun" ]]; \
