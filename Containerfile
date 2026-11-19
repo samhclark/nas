@@ -238,7 +238,7 @@ RUN --mount=type=bind,from=zfs-rpms,source=/,target=/zfs-rpms \
 COPY --from=crun-builder /out/usr/bin/crun /usr/bin/crun
 
 RUN /bin/bash -c 'set -euo pipefail; \
-    /usr/local/bin/vector --version | grep -F "vector 0.61.0"; \
+    /usr/local/bin/vector --version | grep -F "vector 0.62.0"; \
     /usr/local/bin/vector validate \
         --config-yaml /etc/vector/vector.yaml \
         --no-environment --skip-healthchecks; \
