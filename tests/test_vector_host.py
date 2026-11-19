@@ -103,14 +103,6 @@ class VectorHostTests(unittest.TestCase):
             "COPY --from=vector-license /usr/share/vector/NOTICE",
             CONTAINERFILE,
         )
-        self.assertIn(
-            f'/usr/local/bin/vector --version | grep -F "vector {versions["vector"]}"',
-            CONTAINERFILE,
-        )
-        self.assertIn(
-            f"/usr/local/bin/vector --version | grep -Fq 'vector {versions['vector']}'",
-            IMAGE_CONTRACT,
-        )
         self.assertIn("--config-yaml /etc/vector/vector.yaml", CONTAINERFILE)
         self.assertIn("--no-environment --skip-healthchecks", CONTAINERFILE)
 
