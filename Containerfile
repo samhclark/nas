@@ -91,7 +91,7 @@ FROM ghcr.io/getsops/sops:v3.13.3@sha256:857f5a151ac0b2bfc55c1e4e5581d66fb8e268e
 #  Stage 3: Pull Vector runtime
 #
 #####
-FROM docker.io/timberio/vector:0.61.0-distroless-static@sha256:6901c28cc86ed3d41880198dad12ba7b6df83efdf9c61c0c175d23980689a16f AS vector
+FROM docker.io/timberio/vector:0.62.0-distroless-static@sha256:85c478aa4ab29d17f61aa28afe92da7f506a95cae0ec275ba139558e7816e656 AS vector
 
 
 #####
@@ -99,7 +99,7 @@ FROM docker.io/timberio/vector:0.61.0-distroless-static@sha256:6901c28cc86ed3d41
 #  Stage 4: Pull Vector license and notice material
 #
 #####
-FROM docker.io/timberio/vector:0.61.0-debian@sha256:f6c23b5a7e16fb2838d33619ef7acf4bad2289a7cf22bc90efc2371f520c4ea2 AS vector-license
+FROM docker.io/timberio/vector:0.62.0-debian@sha256:6266b1d35c844918ff1c48ea2ec4f57c2b0664c46f3e17fc2418d5dda1692068 AS vector-license
 
 
 #####
