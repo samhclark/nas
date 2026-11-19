@@ -24,21 +24,6 @@
     },
     {
       "customType": "regex",
-      "description": "Update Vector version assertions alongside its images",
-      "managerFilePatterns": [
-        "/^Containerfile$/",
-        "/^tests\\/image-contract\\.sh$/"
-      ],
-      "matchStrings": [
-        "grep -Fq? [\"']vector (?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)[\"']"
-      ],
-      "depNameTemplate": "vectordotdev/vector",
-      "datasourceTemplate": "github-releases",
-      "extractVersionTemplate": "^v(?<version>[0-9]+\\.[0-9]+\\.[0-9]+)$",
-      "versioningTemplate": "semver"
-    },
-    {
-      "customType": "regex",
       "description": "Update rootless Quadlet container images",
       "managerFilePatterns": [
         "/^quadlets\\/[^/]+\\.toml$/"
@@ -88,10 +73,9 @@
   ],
   "packageRules": [
     {
-      "description": "Keep the Vector runtime, license material, and version assertions on the same release",
+      "description": "Keep the Vector runtime and license material on the same release",
       "matchPackageNames": [
-        "docker.io/timberio/vector",
-        "vectordotdev/vector"
+        "docker.io/timberio/vector"
       ],
       "groupName": "Vector"
     },

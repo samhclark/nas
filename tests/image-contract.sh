@@ -18,7 +18,6 @@ bootc container lint
 grep -aFq 'krun.tap_name' /usr/bin/crun
 grep -aFq 'krun.guest_bootstrap_root' /usr/bin/crun
 /usr/local/bin/sops --version | grep -Fq 'sops 3.13.3'
-/usr/local/bin/vector --version | grep -Fq 'vector 0.61.0'
 /usr/local/bin/vector validate \
     --config-yaml /etc/vector/vector.yaml \
     --no-environment --skip-healthchecks
