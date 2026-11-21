@@ -1,238 +1,424 @@
 # Immich recovery runbook
 
-## Scope
+Use this procedure to recover Immich from Backblaze B2 on a replacement
+machine or rehearse that recovery in a disposable VM. The
+[November 21 laptop rehearsal](#laptop-rehearsal-on-2026-11-21) verified the
+direct B2 restore, database import, original files, and browser access. It
+used the laptop's SOPS age identity. The separately escrowed read-only
+credential still needs an end-to-end test.
 
-This is the authoritative Immich restore runbook. It covers local and Backblaze
-B2 recovery-point selection, retrieval and decryption, restoration into
-isolation, application-level validation, and safe teardown. Remote repository
-access does not replace the recovery-unit, restore, or acceptance contracts
-proved by the first local rehearsal.
+[Find a backup](#1-select-and-size-a-recovery-point) ·
+[Restore the library](#2-restore-the-library-in-the-guest) ·
+[Prepare Immich](#3-prepare-a-matching-offline-immich) ·
+[Import and validate](#4-import-postgresql-and-check-every-original) ·
+[Test and clean up](#5-verify-the-browser-and-finish)
 
-## Recovery objective
+## 1. Select and size a recovery point
 
-The accepted Immich recovery-point objective is 24 hours of database changes.
-The current daily automatic database dump therefore satisfies the recovery
-frequency requirement, provided monitoring or later backup automation proves
-that dumps continue to be created and retained.
+Record the start time with `date -u +%FT%TZ`. For a rehearsal, treat this as
+the time the NAS was lost. Do the B2 reads while the daily mirror and weekly
+maintenance are idle. The recovery objective is 24 hours of database changes.
+The recovery point pairs a gzip-valid database dump with a filesystem snapshot
+taken after that dump.
 
-A recoverable Immich point consists of:
-
-- one gzip-valid Immich database dump from `/data/backups`; and
-- the authoritative filesystem state from
-  `tank/immich-server/library`, captured no earlier than that dump.
-
-Take the database dump first and the filesystem copy or snapshot second. This
-ordering can leave unreferenced files in the filesystem, but it must not leave
-the restored database referring to absent authoritative source files. Keep the
-gap as short as practical. Changes committed to Immich after the database dump
-are outside that recovery point even if their files appear in the later
-filesystem copy.
-
-The recoverable unit includes uploaded originals, managed-library originals,
-profiles, and the database-backup output. It excludes `thumbs`,
-`encoded-video`, Valkey state, and machine-learning state because those are
-regenerable derivatives or caches. Immich v3 can retain hidden `asset` records
-whose `originalPath` is below `/data/encoded-video`; validation must classify
-those as generated data rather than missing authoritative originals.
-
-## B2 recovery prerequisites
-
-The administrator's external password manager, rather than the NAS alone,
-must contain the restic repository password, Immich-scoped B2 key ID and
-application key, bucket name, S3 endpoint, and this runbook. Recovery also
-requires pinned or version-compatible `restic` and `rclone` binaries and enough
-disposable capacity for the selected repository point plus fresh PostgreSQL
-state. The scoped key must be able to read `immich/restic/`; routine recovery
-does not require write or delete access even though the NAS replication key
-has those narrowly scoped capabilities.
-
-Use a trusted, isolated recovery workstation or a reviewed disposable host.
-Do not print credentials, place them in shell history, or copy them into this
-repository. The following examples assume the operator has exposed an rclone
-S3 remote named `b2`, exported the same scoped key as `AWS_ACCESS_KEY_ID` and
-`AWS_SECRET_ACCESS_KEY`, set `B2_ENDPOINT` and `B2_BUCKET` from password-manager
-values, and written the restic password to a mode-`0600` temporary file. The
-direct restic repository URL is:
-
-```text
-s3:<B2-S3-endpoint>/<NAS-backups-bucket>/immich/restic
-```
-
-Record the recovery host, restic and rclone versions, repository ID, selected
-snapshot ID and time, and Immich/PostgreSQL versions. Do not record secret
-values or original filenames as routine evidence.
-
-## Inventory and direct remote verification
-
-Inventory B2 before restoring. Listing the repository should show `config` and
-the ordinary restic `data`, `index`, `keys`, and `snapshots` trees beneath the
-single application prefix. An empty prefix, a second nested `restic` directory,
-or selected internal objects rather than the complete tree is a replication
-failure, not a reason to initialize anything.
+On the laptop, install restic and retrieve the bucket name, Backblaze S3
+endpoint, restic password, and B2 key from the external password manager.
+Use a key restricted to reading and listing `immich/restic/` in the backup
+bucket. Keep a copy of this runbook with the recovery material. The endpoint
+is the bucket's S3 hostname, such as `s3.us-east-005.backblazeb2.com`.
+Load these functions into a fresh Bash session without shell tracing.
+Use the same functions later in the guest.
 
 ```bash
-rclone lsf "b2:${B2_BUCKET}/immich/restic" \
-  --recursive --files-only
-rclone size "b2:${B2_BUCKET}/immich/restic"
-RESTIC_PASSWORD_FILE="${RESTIC_PASSWORD_FILE}" \
-  restic -r "s3:${B2_ENDPOINT}/${B2_BUCKET}/immich/restic" snapshots --compact
-RESTIC_PASSWORD_FILE="${RESTIC_PASSWORD_FILE}" \
-  restic -r "s3:${B2_ENDPOINT}/${B2_BUCKET}/immich/restic" check
+configure_b2() {
+    local endpoint=${1#https://} region
+    endpoint=${endpoint%/}
+    [[ "$endpoint" =~ ^s3\.([a-z0-9-]+)\.backblazeb2\.com$ ]] || return 1
+    region="${BASH_REMATCH[1]}"
+    [[ "$2" =~ ^[A-Za-z0-9-]+$ ]] || return 1
+    unset RESTIC_REPOSITORY_FILE
+    export AWS_DEFAULT_REGION="$region"
+    export RESTIC_REPOSITORY="s3:https://$endpoint/$2/immich/restic"
+}
+
+b2_restic() {
+    restic --no-lock -o "s3.region=${AWS_DEFAULT_REGION:?}" \
+        -o s3.bucket-lookup=path "$@"
+}
+
+load_b2_prompt() {
+    local endpoint bucket
+    unset AWS_SESSION_TOKEN RESTIC_PASSWORD_FILE RESTIC_PASSWORD_COMMAND
+    read -rp 'B2 S3 endpoint: ' endpoint || return
+    read -rp 'B2 bucket name: ' bucket || return
+    configure_b2 "$endpoint" "$bucket" || return
+    read -rsp 'Read-only B2 key ID: ' AWS_ACCESS_KEY_ID || return
+    printf '\n'
+    read -rsp 'Read-only B2 application key: ' AWS_SECRET_ACCESS_KEY || return
+    printf '\n'
+    read -rsp 'Restic repository password: ' RESTIC_PASSWORD || return
+    printf '\n'
+    [[ -n "$AWS_ACCESS_KEY_ID" && -n "$AWS_SECRET_ACCESS_KEY" && -n "$RESTIC_PASSWORD" ]] || return 1
+    export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY RESTIC_PASSWORD
+}
+
+(
+    set +x
+    set -euo pipefail
+    load_b2_prompt
+    b2_restic snapshots --host nas --tag immich --path /source
+    read -rp 'Newest matching snapshot at or before drill start: ' snapshot
+    [[ "$snapshot" =~ ^[a-f0-9]{8,64}$ ]]
+    b2_restic stats --mode restore-size "$snapshot"
+)
 ```
 
-Here `B2_BUCKET` is the bucket name from external escrow, not a guessed default.
-The inventory uses rclone while restic accesses the same prefix directly
-through B2's S3 endpoint; neither requires first copying repository objects to
-the NAS. Treat any nonzero status as failure. Never run `restic init`, `forget`,
-`prune`, `repair`, or `rclone sync` while investigating a remote repository. If
-direct structural verification fails, preserve the B2 inventory and logs,
-inspect hidden B2 object versions, and recover to a separate prefix or local
-directory; do not overwrite the only off-site copy.
+Record the snapshot ID, timestamp, and restore size. Compare it with free
+space on the encrypted storage backing the VM, allowing room for Linux,
+container images, PostgreSQL, and laptop use. Restic sizing can take several
+minutes. This is a safe stopping point for a later session. Resume with the
+same snapshot ID and drill start time.
 
-Select a snapshot only after its host, tags, source path, and time match the
-expected Immich job. Restore directly from B2 into an empty local staging
-directory and retain the restic log:
+If access fails, check the endpoint, bucket, key scope, and restic password.
+If the listing is empty or implausibly small, inspect the repository
+inventory before proceeding. An optional read-only rclone inventory should
+show `config`, `data`, `index`, `keys`, and `snapshots` under the single
+`immich/restic/` prefix. Preserve the evidence if `restic check` fails and
+review hidden B2 object versions before recovering to a separate destination.
+Never initialize, prune, repair, or sync into the B2 repository as part of
+recovery.
+
+### SOPS fallback
+
+If the external credential is unavailable, the laptop's existing SOPS age
+identity can unlock the five values in the repository. This uses the
+replication key, which has write permissions. Use only the read commands in
+this runbook with `--no-lock`. Keep the age key on the trusted laptop, and
+record the credential fallback in the drill evidence.
+
+Run this from the repository root on the laptop, with the preceding
+functions already loaded. It passes the five selected fields in memory.
 
 ```bash
-RESTIC_PASSWORD_FILE="${RESTIC_PASSWORD_FILE}" \
-  restic -r "s3:${B2_ENDPOINT}/${B2_BUCKET}/immich/restic" \
-  restore "${RESTIC_SNAPSHOT_ID}" --target "${RESTORE_STAGING_DIRECTORY}"
+sops_b2_fields() {
+    sops decrypt --output-type json overlay-root/usr/share/nas/secrets/secrets.sops.yaml |
+        jq -ej '[
+            ."immich-backup-b2-s3-endpoint",
+            ."immich-backup-b2-bucket",
+            ."immich-backup-b2-key-id",
+            ."immich-backup-b2-application-key",
+            ."immich-backup-restic-password"
+        ] | if all(.[]; type == "string" and length > 0)
+            then .[] + "\u0000" else error("missing Immich recovery field") end'
+}
+
+load_b2_stream() {
+    local -a fields=()
+    mapfile -d '' -t fields
+    [[ ${#fields[@]} -eq 5 ]] || return 1
+    unset AWS_SESSION_TOKEN RESTIC_PASSWORD_FILE RESTIC_PASSWORD_COMMAND
+    configure_b2 "${fields[0]}" "${fields[1]}" || return
+    export AWS_ACCESS_KEY_ID="${fields[2]}" AWS_SECRET_ACCESS_KEY="${fields[3]}"
+    export RESTIC_PASSWORD="${fields[4]}"
+}
+
+(
+    set +x
+    set -euo pipefail
+    sops_b2_fields | (
+        load_b2_stream
+        b2_restic snapshots --host nas --tag immich --path /source
+    )
+)
 ```
 
-The repository objects remain restic-encrypted in B2 and use the S3 transport
-only as opaque objects; restic authenticates and decrypts file content at the
-restore destination. If the archived source path is uncertain, first run
-`restic ls` with the same `-r` repository option and selected snapshot ID.
-Then identify the restored authoritative-library root. Do not flatten or
-rearrange it until the restore has completed successfully.
+To size the selected point with the fallback, replace the last `snapshots`
+command with `b2_restic stats --mode restore-size SNAPSHOT_ID`. Preserve the
+pipe into `load_b2_stream` so decrypted values stay out of terminal output.
 
-## Disposable ZFS destination
+## 2. Restore the library in the guest
 
-On the NAS, an operator may copy the decrypted restore to a uniquely named,
-empty disposable dataset. Agents must not execute these commands on the NAS.
-Resolve and review the literal dataset and mountpoint first; never reuse a
-production dataset or broad recursive target. A representative creation and
-labeling sequence is:
+Boot a disposable Linux VM with a browser, Podman, restic, ZFS and SELinux
+tools, and Python 3. Use an OS disk and a second virtual disk backed by
+encrypted laptop storage. Leave host shares, physical disk passthrough, and
+NAS mounts out of the guest. Verify that `/var` is writable, SELinux is
+enforcing, and ZFS loads before entering credentials. Use the guest's normal
+installation path. The rehearsal's bootc-generated CoreOS disk required
+manual boot and writable `/var` setup.
+
+Inside the VM, open a root Bash shell. Identify the blank scratch disk by
+size and stable virtual-disk ID with `lsblk -o NAME,TYPE,SIZE,FSTYPE,SERIAL,MOUNTPOINTS`.
+Substitute its actual ID in this example. The pool creation writes to that
+disk. Confirm the target and the empty dataset before proceeding.
 
 ```bash
-sudo zfs create \
-  -o mountpoint=/var/lib/nas-restore/immich-b2-library \
-  tank/immich-b2-restore
-sudo chown 51130:51130 /var/lib/nas-restore/immich-b2-library
-sudo semanage fcontext -a -r s0 -t container_file_t \
-  '/var/lib/nas-restore/immich-b2-library(/.*)?'
-sudo restorecon -F -R -x /var/lib/nas-restore/immich-b2-library
+disk=/dev/disk/by-id/virtio-immich-scratch
+if [[ "$(getenforce)" == Enforcing && -w /var && -b "$disk" ]] &&
+   [[ "$(lsblk -ndo TYPE "$disk")" == disk && -z "$(wipefs -n "$disk")" ]]; then
+    zpool create -o ashift=12 -O mountpoint=none -O compression=lz4 \
+        -O atime=off -O xattr=sa -O acltype=posixacl immichdrill "$disk" &&
+    zfs create -o mountpoint=/mnt/immich-drill immichdrill/recovery &&
+    findmnt -T /mnt/immich-drill
+else
+    printf 'Check the guest prerequisites and the blank scratch disk ID.\n' >&2
+fi
 ```
 
-Copy the restored authoritative tree into that mountpoint without crossing
-filesystems unintentionally, then repeat `restorecon`. Do not recursively
-normalize ownership: preserve restic's restored descendant IDs and require the
-dataset root itself to use the production service identity. Verify a bounded
-sample is within the service or subordinate-ID ownership contract and reports
-`object_r:container_file_t:s0`. Preserve xattrs during transfer, but treat the
-destination host's persistent fcontext rule as authoritative. Use separate
-small scratch directories for the fresh PostgreSQL, Valkey, `thumbs`, and
-`encoded-video` state required by the isolated application rehearsal.
-
-## Reviewed restore sequence
-
-Use the same Immich application version and compatible PostgreSQL major version
-recorded in the dump filename whenever possible. Restore into fresh database
-storage and a writable copy or clone of the authoritative library. Never mount
-a production dataset writable into a rehearsal.
-
-1. Record the database dump filename, size, modification time, Immich version,
-   PostgreSQL version, and configured retention. Run `gzip --test` on the dump.
-2. Capture or select the filesystem point taken after the dump. For a local
-   rehearsal, create a manually named ZFS snapshot and a writable clone with an
-   unmistakably disposable dataset name. For B2, restore the selected restic
-   snapshot into the empty disposable dataset described above.
-3. Give the clone the production service identity and
-   `container_file_t:s0` SELinux contract. Use small privately relabeled
-   scratch directories for fresh PostgreSQL and Valkey state.
-4. Initialize the pinned PostgreSQL image with a disposable password. Restore
-   the dump with `psql --single-transaction --set ON_ERROR_STOP=on`, applying
-   Immich's documented `search_path` replacement to the SQL stream.
-5. Confirm that the restored database has users and assets, and that PostgreSQL
-   reports the expected major version. Do not print user names, asset names, or
-   paths as routine evidence.
-6. Start disposable Valkey and the pinned Immich server on an isolated network.
-   Publish the server on NAS loopback only and reach it through an SSH tunnel.
-   Machine learning is not required for recovery validation.
-7. When generated datasets are excluded, create empty `thumbs` and
-   `encoded-video` anchors and `.immich` markers only in disposable storage.
-   Label both anchors and markers `container_file_t:s0`. Broken timeline
-   previews are expected until thumbnails are regenerated.
-8. Compare every active `/data/upload/` and `/data/library/` database path with
-   the disposable filesystem. Require zero missing source files and zero
-   unexpected path prefixes. Report `/data/encoded-video/` records separately.
-9. Log in through the isolated web UI. Verify representative older and recent
-   originals, an original download, dates, and album membership. Do not run
-   bulk thumbnail, transcoding, or machine-learning jobs merely to make the
-   rehearsal UI attractive.
-10. Stop and remove the disposable containers and network, destroy only the
-    explicitly named clone or B2 restore dataset and rehearsal snapshot, remove
-    the matching scratch directory and temporary recovery credentials, and
-    remove the temporary fcontext rule if its path will not be reused. Recheck
-    that production Immich remains healthy.
-
-For a real recovery, replace the local ZFS snapshot with the authoritative
-filesystem copy from the backup destination, install the real runtime secrets,
-restore ownership and persistent SELinux policy, and expose Immich only after
-the database-to-source-file validation passes.
-
-## R2 rollout and completion gate
-
-Provisioning status as of 2026-08-30:
-
-- the private B2 bucket and `immich/restic/` prefix lifecycle rule are in place;
-- the prefix-scoped read/write application key is in place;
-- all five backup secrets contain their real values in SOPS; and
-- the restic encryption password is escrowed in the administrator's external
-  password manager.
-
-Image deployment, explicit repository initialization, first backup and mirror,
-and the isolated direct-B2 restore rehearsal remain pending. The broader R3
-recovery-material verification remains separate from this provisioning status.
-
-Before the first run, the operator manually creates one private NAS-backups B2
-bucket, the `immich/restic/` application prefix, and an application key limited
-to that bucket prefix with only the read, write, delete, and listing abilities
-needed by replication and verification. Configure a prefix lifecycle rule with
-`daysFromHidingToDeleting: 30` and no upload-age hiding. This retains replaced
-or deleted versions temporarily without hiding live restic objects.
-
-Through the existing SOPS workflow, the operator supplies
-`immich-backup-restic-password`, `immich-backup-b2-key-id`,
-`immich-backup-b2-application-key`, `immich-backup-b2-bucket`, and
-`immich-backup-b2-s3-endpoint`. Copy the strong generated restic password,
-bucket identity, scoped B2 credential, and minimum recovery instructions to the
-external password manager before initialization. Do not commit plaintext or
-send it back as command output.
-
-After deployment through the normal main-branch image flow, the reviewed
-operator sequence is:
+Load `configure_b2`, `b2_restic`, and `load_b2_prompt` above in the root
+shell. Define the following function. It checks the destination again and
+restores numeric ownership and xattrs as root. The restore leaves the
+authoritative library at `/mnt/immich-drill/source`.
 
 ```bash
-sudo nas-backup-immich status
-sudo nas-backup-immich init
-sudo nas-backup-immich status
+restore_b2() (
+    set -euo pipefail
+    target=/mnt/immich-drill
+    [[ "${1:-}" =~ ^[a-f0-9]{8,64}$ ]]
+    [[ $EUID -eq 0 && "$(getenforce)" == Enforcing ]]
+    [[ "$(findmnt -no SOURCE -T "$target")" == immichdrill/recovery ]]
+    [[ -z "$(find "$target" -mindepth 1 -maxdepth 1 -print -quit)" ]]
+    b2_restic check
+    b2_restic restore "${1:?snapshot ID required}" --target "$target" --verify
+)
+
+(
+    set +x
+    set -euo pipefail
+    load_b2_prompt
+    read -rp 'Saved snapshot ID: ' snapshot
+    restore_b2 "$snapshot"
+)
 ```
 
-Initialization is explicit and only for a confirmed-empty local repository; an
-access or password failure must never trigger reinitialization. Observe the
-potentially multi-hour first upload through systemd status, secret-safe logs,
-backup metrics, and B2 inventory. Then perform the direct-B2 isolated restore
-above, including the complete database-to-authoritative-file comparison,
-representative older and recent UI checks, an original download, date and
-album verification, disposable-resource cleanup, and production Immich health
-revalidation.
+For the SOPS fallback, define `restore_b2` on the trusted laptop as well.
+Use an authenticated SSH connection to the disposable guest through a
+temporary laptop-loopback forward. The example assumes a Bash login shell
+and guest-only `sudo -n` authorization. Substitute the reviewed SSH port,
+guest login, and saved snapshot ID. The credential stream goes to the
+restore process and ends with it.
 
-Do not mark roadmap R2 complete based on successful initialization, upload,
-repository checks, or metrics alone. The isolated restore from B2 and all
-acceptance and cleanup checks are the completion gate. Record the rehearsal
-date, selected snapshot, versions, counts, and secret-safe outcome in this
-document when it passes.
+```bash
+(
+    set +x
+    set -euo pipefail
+    snapshot=SNAPSHOT_ID
+    [[ "$snapshot" =~ ^[a-f0-9]{8,64}$ ]]
+    guest_script="$(declare -f configure_b2 b2_restic load_b2_stream restore_b2)
+set +x
+set -euo pipefail
+load_b2_stream
+restore_b2 \"\$1\""
+    printf -v remote 'sudo -n bash -c %q bash %q' "$guest_script" "$snapshot"
+    sops_b2_fields | ssh -T -p 22783 drill@127.0.0.1 "$remote"
+)
+```
+
+Continue in the guest root shell after both restic commands succeed.
+
+## 3. Prepare a matching offline Immich
+
+Select the newest scheduled dump and check that it is readable.
+
+```bash
+shopt -s nullglob
+dumps=(/mnt/immich-drill/source/backups/immich-db-backup-*.sql.gz)
+unset DUMP
+if (( ${#dumps[@]} )); then
+    dump_candidate=${dumps[-1]}
+    if gzip -t -- "$dump_candidate"; then
+        DUMP=$dump_candidate
+        stat -c '%n %s bytes, modified %y' "$DUMP"
+    fi
+fi
+test -n "${DUMP:-}"
+```
+
+Record the Immich and PostgreSQL versions from the dump name. Interpret
+its timestamp in the Immich server's configured timezone
+(`America/Chicago` for this NAS). Confirm the dump precedes the snapshot and
+compute its age at drill start. Record an age over 24 hours as a freshness
+failure even if the application restores.
+
+Set `SERVER_IMAGE`, `POSTGRES_IMAGE`, and `VALKEY_IMAGE` to compatible
+digest-pinned images. Match the Immich server version and the PostgreSQL
+major recorded in the dump filename. Use the matching deployment revision's
+[server](../../quadlets/immich-server.toml),
+[database](../../quadlets/immich-database.toml), and
+[Valkey](../../quadlets/immich-valkey.toml) image references. The commands
+below use the PostgreSQL 18 image's `/var/lib/postgresql` volume path. Check
+the image's data directory if using a different major. Pull the three images
+while the guest is online.
+
+```bash
+(
+    set -e
+    for image in "${SERVER_IMAGE:?}" "${POSTGRES_IMAGE:?}" "${VALKEY_IMAGE:?}"; do
+        podman pull "$image"
+    done
+)
+```
+
+Confirm all pulls succeeded. Close the recovery credential shells, remove
+any temporary SSH forwarding, and disconnect the VM's external adapter.
+Inside the guest, `ip -4 route show default` and `ip -6 route show default`
+should both return empty output. Keep the private container network and
+open the browser through the VM console.
+
+Restore the library root's owner and SELinux policy. Preserve restic's
+descendant ownership. A sampled descendant should use IDs from the service
+identity or its subordinate range (`51130` or `511300000`–`511365535`) and
+report `object_r:container_file_t:s0`. On Fedora CoreOS, use `/mnt` in the
+fcontext rule even though that path resolves to `/var/mnt`.
+
+```bash
+LIBRARY=/mnt/immich-drill/source
+SCRATCH=/var/lib/immich-drill
+chown 51130:51130 "$LIBRARY"
+semanage fcontext -a -r s0 -t container_file_t "$LIBRARY(/.*)?"
+restorecon -F -R -x "$LIBRARY"
+for folder in thumbs encoded-video; do
+    install -d -m 0750 -o 51130 -g 51130 "$SCRATCH/$folder"
+    install -m 0644 -o 51130 -g 51130 /dev/null "$SCRATCH/$folder/.immich"
+    semanage fcontext -a -r s0 -t container_file_t "$SCRATCH/$folder(/.*)?"
+    restorecon -F -R -x "$SCRATCH/$folder"
+done
+stat -c '%u:%g %a %C' "$LIBRARY" "$SCRATCH"/{thumbs,encoded-video}/.immich
+```
+
+The backup contains originals, profiles, and scheduled SQL dumps. Immich can
+regenerate thumbnails and encoded videos. The scratch mounts supply the
+required directories and markers for those excluded trees. Valkey starts
+empty, and machine learning is unnecessary for acceptance.
+
+## 4. Import PostgreSQL and check every original
+
+Run these commands only in the offline guest. Start with a fresh volume,
+create a disposable database secret, and start PostgreSQL alone.
+
+```bash
+set -o pipefail
+podman network create immich-drill
+podman volume create immich-drill-postgres
+openssl rand -hex 32 | podman secret create immich-drill-db-password -
+podman run -d --name immich-drill-postgres --network immich-drill --pull=never \
+    --secret immich-drill-db-password \
+    -e POSTGRES_PASSWORD_FILE=/run/secrets/immich-drill-db-password \
+    -e POSTGRES_USER=postgres -e POSTGRES_DB=immich \
+    -e POSTGRES_INITDB_ARGS=--data-checksums \
+    -v immich-drill-postgres:/var/lib/postgresql "$POSTGRES_IMAGE"
+podman exec immich-drill-postgres pg_isready -h 127.0.0.1 -U postgres -d immich
+```
+
+Repeat `pg_isready` until it accepts connections. Import the dump in one
+transaction with Immich's search path adjustment. Stop on any pipeline
+failure. Use fresh database storage for a retry if the application has
+already run against it.
+[Immich command-line restore instructions](https://docs.immich.app/administration/backup-and-restore/#restore-via-command-line)
+
+```bash
+gzip -dc -- "${DUMP:?set DUMP to the verified SQL dump}" |
+    sed "s/SELECT pg_catalog.set_config('search_path', '', false);/SELECT pg_catalog.set_config('search_path', 'public, pg_catalog', true);/g" |
+    podman exec -i immich-drill-postgres psql -X -U postgres -d immich \
+        --single-transaction --set ON_ERROR_STOP=on
+```
+
+Check the PostgreSQL major, nonzero user and active-asset counts, and album
+count. These queries apply to the Immich v3 schema used in the rehearsal.
+They print counts and versions only. A zero count in either original
+directory is valid if the library uses the other directory.
+
+```bash
+db() {
+    podman exec immich-drill-postgres psql -X -U postgres -d immich -At \
+        --set ON_ERROR_STOP=on "$@"
+}
+db -c 'SELECT current_setting('\''server_version'\''),
+    (SELECT count(*) FROM public."user"),
+    (SELECT count(*) FROM public.album),
+    (SELECT count(*) FROM public.asset WHERE "deletedAt" IS NULL)'
+db -c 'SELECT row_to_json(paths) FROM
+    (SELECT "originalPath" AS path FROM public.asset WHERE "deletedAt" IS NULL) paths' |
+    python3 -c '
+import json
+from pathlib import Path, PurePosixPath
+import sys
+
+root = Path(sys.argv[1]).resolve()
+counts = dict(upload=0, library=0, generated_video=0, missing=0, unexpected=0)
+for row in sys.stdin:
+    value = json.loads(row)["path"]
+    parts = PurePosixPath(value).parts if isinstance(value, str) else ()
+    if parts[:2] != ("/", "data") or len(parts) < 4 or ".." in parts:
+        counts["unexpected"] += 1
+        continue
+    folder = parts[2]
+    if folder in ("upload", "library"):
+        counts[folder] += 1
+        candidate = root.joinpath(*parts[2:])
+        if not candidate.resolve().is_relative_to(root) or not candidate.is_file():
+            counts["missing"] += 1
+    elif folder == "encoded-video":
+        counts["generated_video"] += 1
+    else:
+        counts["unexpected"] += 1
+print(json.dumps(counts))
+sys.exit(bool(counts["missing"] or counts["unexpected"] or not (counts["upload"] + counts["library"])))
+' "$LIBRARY"
+```
+
+Require zero missing originals and zero unexpected path prefixes before
+starting the server. The generated-video count covers Immich v3 records under
+`/data/encoded-video/`. In an actual recovery, investigate discrepancies
+before exposing the service or replacing existing data.
+
+## 5. Verify the browser and finish
+
+Start Valkey and Immich on the private Podman network. Keep the application
+bound to guest loopback. Run only the API worker for the drill.
+
+```bash
+podman run -d --name immich-drill-valkey --network immich-drill --pull=never \
+    "$VALKEY_IMAGE"
+podman run -d --name immich-drill-server --network immich-drill --pull=never \
+    -p 127.0.0.1:2283:2283 --secret immich-drill-db-password \
+    -e DB_HOSTNAME=immich-drill-postgres -e DB_USERNAME=postgres -e DB_DATABASE_NAME=immich \
+    -e DB_PASSWORD_FILE=/run/secrets/immich-drill-db-password \
+    -e REDIS_HOSTNAME=immich-drill-valkey -e IMMICH_WORKERS_INCLUDE=api \
+    -v "$LIBRARY:/data:rw" -v "$SCRATCH/thumbs:/data/thumbs:rw" \
+    -v "$SCRATCH/encoded-video:/data/encoded-video:rw" "$SERVER_IMAGE"
+curl -fsS --retry 45 --retry-connrefused --retry-delay 2 --retry-max-time 90 \
+    http://127.0.0.1:2283/api/server/ping
+curl -fsS http://127.0.0.1:2283/api/server/version
+```
+
+In the guest browser, open `http://127.0.0.1:2283` and sign in with the Immich
+email and password valid when the dump was taken. Open an older and a recent
+original, download an original, and verify dates and album membership. JPEGs
+are suitable for the viewing checks if HEIC is hard to render. Empty
+thumbnails are expected. Keep the guest offline and leave derivative jobs
+paused during a rehearsal.
+
+Record the credential source, repository and snapshot IDs, dump age, restored
+size, versions, elapsed time, counts, and browser outcomes without personal
+filenames or secrets. Record any failed checks and manual repairs. This is the
+off-site restore evidence for R2. Testing external recovery-material escrow
+remains part of R3.
+
+For a rehearsal, stop the disposable containers and power off the VM.
+Confirm the exact image and credential paths before discarding them. From the
+laptop, recheck the production Immich UI and `/api/server/ping` after
+teardown. Agents must never SSH to or run commands on the production NAS.
+
+For a real recovery, retain the verified staged copy. Install the matching
+service configuration and [runtime secrets](../architecture/secrets.md) on
+the replacement host and restore ownership and persistent SELinux labels.
+Run the original-file check against the final mount before opening ingress.
+Regenerate derivatives once the service is available. For a local rehearsal
+on the NAS, the operator can pair a reviewed dump with a later writable ZFS
+clone in a uniquely named disposable dataset, then follow steps 3–5 with
+paths adjusted for that copy. Use NAS loopback and an operator-managed
+SSH tunnel for browser access. Keep production datasets outside the
+rehearsal's writable mounts.
 
 ## Rehearsal evidence: 2026-08-29
 
