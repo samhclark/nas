@@ -270,3 +270,48 @@ Two operational details were discovered and are now part of the reviewed
 sequence: excluded generated directories still require `.immich` markers, and
 new marker files below a clone mountpoint outside the production fcontext rules
 must be labeled `container_file_t:s0` rather than their default `var_lib_t`.
+
+## Laptop rehearsal on 2026-11-21
+
+The drill started at 21:03:30 UTC. It selected the 10:00:03 UTC B2 snapshot
+`9bc981de5cbbeaedb0b8b6d4b1ef60d169ddce41c00e4c6cad9d6ef4f58386a6`.
+The restic repository ID was
+`4d4d3ce26d88385a73eda368d336c957d489217da7d1dbbc8bee07a1efae8116`.
+Restic 0.20.0 sized it at 44,388,448,139 bytes (41.3 GiB). Restic 0.19.1
+checked the repository with no errors, then restored and verified the snapshot
+directly from B2 into `immichdrill/recovery` in a disposable laptop VM with
+ZFS and SELinux enforcing.
+
+The password-manager read-only-key attempt ended before snapshot selection.
+The laptop decrypted the repository's five Immich backup values with its
+local SOPS age identity and passed them to the recovery process in memory.
+All B2 commands used `--no-lock` and read the repository. The laptop and B2
+provided all recovery inputs. The CoreOS guest needed manual boot and writable
+`/var` setup before the restore.
+
+The latest of 14 retained dumps was
+`immich-db-backup-20261121T020000-v3.4.2-pg18.4.sql.gz`. Its 47,331,247 bytes
+passed gzip verification. The dump was taken at 08:00:00 UTC, 13 hours,
+3 minutes, and 30 seconds before the drill start. The later filesystem
+snapshot and the dump met the 24-hour database recovery objective.
+
+The VM's external adapter was disconnected before the transactional import
+into PostgreSQL 18.4. The database contained one user, 16 albums, and 12,391
+active assets. All 12,048 authoritative originals resolved to files under
+`/data/upload/`, with zero originals under `/data/library/`, zero missing
+originals, and zero unexpected prefixes. The remaining 343 active records
+referenced generated videos.
+
+Immich 3.4.2, PostgreSQL 18.4 with VectorChord, and Valkey 9.1.3 ran on a
+private guest network. The first successful Immich API response was at
+22:17:58 UTC, about 74 minutes after the drill started. Firefox opened the
+guest loopback URL. The operator signed in and accepted the older and recent
+original, date, and album checks. Three nonempty downloads were present in
+the guest. Timeline thumbnails were absent as expected. The operator noted
+possible HEIC display trouble, and HEIC rendering was unverified.
+
+The rehearsal containers, private network, database volume, and disposable
+database secret were removed. A manual scratch-pool export reported an
+unmount-path error. The guest then powered off and the laptop's rehearsal
+disk images and temporary SSH credentials were removed. The normal
+production UI returned HTTP 200 and its API returned `pong` after teardown.
