@@ -7,7 +7,8 @@
 The runner loads image digests, adapter mounts, and identity declarations from
 the authored service TOMLs.  It uses ``/var/tmp`` for all writable mounts,
 starts each container with the adapter as PID 1, and succeeds only when the
-container stays running for the bounded observation window.  Failure output
+container stays running for the bounded observation window. The Bazarr krun
+case also requires an HTTP response and a clean systemd stop. Failure output
 includes the Podman state and logs; cleanup is attempted for every name that
 was started.
 
@@ -345,6 +346,54 @@ def _wait_running(
         time.sleep(POLL_SECONDS)
 
 
+def _smoke_bazarr_stop(spec: Service, name: str, temporary: Path, arguments: list[str]) -> None:
+    """Run the adapter under conmon and check systemd's classification of SIGINT."""
+    unit = f"{name}.service"
+    podman = shutil.which(CONTAINER_CLI)
+    assert podman and spec.container.entrypoint
+    marker = temporary / "storage/bazarr/config" / name
+    port = spec.endpoints_by_name["http"].port
+    # Probe loopback inside the network-isolated guest. exec preserves the
+    # adapter's process identity and the signal path to Bazarr.
+    probe = (
+        f"(until curl -fsS -o /dev/null --max-time 2 http://127.0.0.1:{port}/ "
+        f"2>/dev/null; do sleep 1; done; touch /config/{marker.name}) & "
+        'exec "$0"'
+    )
+    command = arguments.copy()
+    command[command.index(f"--entrypoint={spec.container.entrypoint}")] = "--entrypoint=/bin/sh"
+    command[-1:] = [
+        "--sdnotify=conmon", "--cgroups=split", "--stop-signal=SIGINT",
+        f"--annotation=krun.cpus={spec.tap_spec.cpus}",
+        f"--annotation=krun.ram_mib={spec.tap_spec.ram_mib}",
+        spec.container.image, "-c", probe, spec.container.entrypoint,
+    ]
+    systemctl = ["systemctl", "--user"]
+    try:
+        subprocess.run([
+            "systemd-run", "--user", f"--unit={unit}", "--property=Type=notify",
+            "--property=NotifyAccess=all", "--property=Delegate=yes", "--property=KillMode=mixed",
+            f"--property=SuccessExitStatus={spec.unit.success_exit_status}",
+            f"--property=ExecStop={podman} stop {name}", podman, *command,
+        ], check=True, timeout=spec.unit.timeout_start_sec)
+        deadline = time.monotonic() + spec.tap_spec.probe_timeout_sec
+        while not marker.exists():
+            if time.monotonic() >= deadline or _inspect(name).stdout.strip() != "true running":
+                raise RuntimeError(_failure_details(name, "Bazarr failed its HTTP readiness check"))
+            time.sleep(POLL_SECONDS)
+        subprocess.run([*systemctl, "stop", unit], check=True, timeout=COMMAND_TIMEOUT_SECONDS)
+        result = subprocess.check_output([*systemctl, "show", "-p", "Result", "--value", unit], text=True)
+        exit_code = run(["inspect", "--format={{.State.ExitCode}}", name], capture=True).stdout.strip()
+        if result.strip() != "success" or exit_code not in ("0", str(spec.unit.success_exit_status)):
+            raise RuntimeError(_failure_details(name, f"systemd result {result.strip()}, exit {exit_code}"))
+        print(f"Bazarr served HTTP and stopped cleanly (exit {exit_code})", flush=True)
+    finally:
+        # Successful transient units are automatically unloaded. Clear a failed
+        # unit after collecting diagnostics, including on an interrupted smoke.
+        subprocess.run([*systemctl, "stop", unit], capture_output=True, timeout=COMMAND_TIMEOUT_SECONDS)
+        subprocess.run([*systemctl, "reset-failed", unit], capture_output=True, timeout=COMMAND_TIMEOUT_SECONDS)
+
+
 def smoke_service(
     spec: Service,
     mode: RuntimeMode,
@@ -362,6 +411,9 @@ def smoke_service(
     )
     original_failure: BaseException | None = None
     try:
+        if spec.info.name == "bazarr" and mode == KRUN_MODE:
+            _smoke_bazarr_stop(spec, name, temporary, arguments)
+            return
         try:
             started = run(
                 arguments,

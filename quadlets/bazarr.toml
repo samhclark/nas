@@ -80,4 +80,6 @@ container-path = "/data/media"
 access = "read-write"
 
 [unit]
+# Bazarr returns EXIT_INTERRUPT (-100, reported as 156) after an orderly SIGINT.
+success-exit-status = 156
 timeout-start-sec = 900

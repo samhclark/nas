@@ -511,11 +511,13 @@ def _parse_unit(raw: object, name: str) -> UnitSpec:
     if raw is None:
         return UnitSpec()
     path = f"{name}: [unit]"
-    table = _table(raw, path, {"restart-sec", "timeout-start-sec"})
+    table = _table(raw, path, {"restart-sec", "timeout-start-sec", "success-exit-status"})
     return UnitSpec(
         restart_sec=_integer(table.get("restart-sec", 30), f"{path}.restart-sec"),
         timeout_start_sec=_integer(table["timeout-start-sec"], f"{path}.timeout-start-sec")
         if "timeout-start-sec" in table else None,
+        success_exit_status=_integer(table["success-exit-status"], f"{path}.success-exit-status")
+        if "success-exit-status" in table else None,
     )
 
 
