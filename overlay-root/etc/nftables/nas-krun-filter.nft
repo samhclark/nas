@@ -243,6 +243,7 @@ chain nas_krun_forward {
     iifname "krun-51260" oifname "krun-51120" ip saddr 10.253.8.2 ip daddr 10.253.2.2 tcp dport { 8096 } accept
     iifname "krun-51420" oifname "krun-51120" ip saddr 10.253.15.2 ip daddr 10.253.2.2 tcp dport { 8096 } accept
     iifname "krun-51410" oifname "krun-51120" ip saddr 10.253.14.2 ip daddr 10.253.2.2 tcp dport { 8096 } accept
+    iifname "krun-51450" oifname "krun-51120" ip saddr 10.253.20.2 ip daddr 10.253.2.2 tcp dport { 8096 } accept
     iifname "krun-51310" oifname "krun-51130" ip saddr 10.253.9.2 ip daddr 10.253.10.2 tcp dport { 2283 } accept
     iifname "krun-51230" oifname "krun-51130" ip saddr 10.253.5.2 ip daddr 10.253.10.2 tcp dport { 2283 } accept
     iifname "krun-51130" oifname "krun-51140" ip saddr 10.253.10.2 ip daddr 10.253.11.2 tcp dport { 5432 } accept
