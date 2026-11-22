@@ -77,3 +77,7 @@ prowlarr.i.samhclark.com {
 sabnzbd.i.samhclark.com {
 	import private-ingress sabnzbd.krun:8080
 }
+
+bazarr.i.samhclark.com {
+	import private-ingress bazarr.krun:6767
+}

@@ -18,3 +18,4 @@ krun-51410	user@51410.service	ensure-nas-sonarr-account.service
 krun-51420	user@51420.service	ensure-nas-radarr-account.service
 krun-51430	user@51430.service	ensure-nas-prowlarr-account.service
 krun-51440	user@51440.service	ensure-nas-sabnzbd-account.service
+krun-51450	user@51450.service	ensure-nas-bazarr-account.service

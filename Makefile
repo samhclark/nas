@@ -151,7 +151,7 @@ smoke-immich-backup-krun: ## Exercise the encrypted Immich backup round trip in 
 ARR_SMOKE_STARTUP_TIMEOUT_SECONDS ?= 60
 ARR_SMOKE_OBSERVE_SECONDS ?= 10
 .PHONY: smoke-arr-images
-smoke-arr-images: ## Run opt-in startup smoke tests for the four authored *arr images
+smoke-arr-images: ## Run opt-in startup smoke tests for the authored *arr images
 	@CONTAINER_CLI="$(PODMAN)" \
 		ARR_SMOKE_STARTUP_TIMEOUT_SECONDS="$(ARR_SMOKE_STARTUP_TIMEOUT_SECONDS)" \
 		ARR_SMOKE_OBSERVE_SECONDS="$(ARR_SMOKE_OBSERVE_SECONDS)" \

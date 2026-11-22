@@ -1,0 +1,83 @@
+# ABOUTME: Bazarr subtitle automation with Mullvad-only internet egress and
+# write access to the TRaSH-layout media library.
+
+[service]
+name = "bazarr"
+application = "media-automation"
+role = "subtitles"
+description = "Bazarr Subtitle Automation"
+documentation = "https://wiki.bazarr.media/"
+
+[host]
+username = "_nas_bazarr"
+uid = 51450
+subid-start = 514500000
+display-name = "Bazarr"
+
+[identity]
+supplemental-groups = ["media"]
+mapped-container-id = 1000
+mapped-group = "media"
+
+[container]
+image = "ghcr.io/linuxserver/bazarr:v1.6.2-ls373@sha256:e0c5d45965242830c5eeddaafe9ae2b5e8ca3f6c01ecda9ee9364f550921dc50"
+log-driver = "journald"
+network = "host"
+container-user = 1000
+entrypoint = "/usr/share/nas/bazarr/bazarr-entrypoint.sh"
+health-cmd = "none"
+no-new-privileges = true
+drop-capabilities = ["NET_RAW"]
+dns = ["100.100.100.100"]
+
+[container.environment]
+TZ = "America/Chicago"
+
+[[container.volumes]]
+comment = "Image-controlled libkrun entrypoint adapter (read-only)"
+source = "/usr/share/nas/bazarr"
+target = "/usr/share/nas/bazarr"
+options = "ro"
+
+[krun]
+enabled = true
+cpus = 2
+ram-mib = 1024
+network = "tap"
+ipv4 = "10.253.20.2/30"
+probe-endpoint = "http"
+probe-timeout-sec = 300
+egress = "mullvad"
+
+[[container.endpoints]]
+name = "http"
+port = 6767
+consumers = ["caddy"]
+
+[assets]
+path = "/usr/share/nas/bazarr"
+
+[[storage]]
+name = "config"
+kind = "managed-zfs"
+dataset = "tank/bazarr/config"
+host-path = "/var/lib/bazarr/config"
+mode = "0750"
+record-size = "16K"
+compression = "lz4"
+atime = false
+primary-cache = "all"
+
+[[storage.exports]]
+subpath = "."
+container-path = "/config"
+access = "read-write"
+
+[[shared-storage]]
+resource = "media"
+subpath = "data/media"
+container-path = "/data/media"
+access = "read-write"
+
+[unit]
+timeout-start-sec = 900

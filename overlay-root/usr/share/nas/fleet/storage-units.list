@@ -2,6 +2,7 @@
 # systemd unit
 nas-prepare-media-storage.service
 nas-prepare-alertmanager-storage.service
+nas-prepare-bazarr-storage.service
 nas-prepare-caddy-storage.service
 nas-prepare-garage-storage.service
 nas-prepare-grafana-storage.service

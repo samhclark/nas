@@ -2,7 +2,7 @@
 # ABOUTME: Smoke-tests the authored *arr and SABnzbd images under both runtimes.
 # ABOUTME: Keeps the libkrun/PID-1 check opt-in and entirely disposable.
 
-"""Opt-in startup smoke tests for the four media-automation images.
+"""Opt-in startup smoke tests for the media-automation images.
 
 The runner loads image digests, adapter mounts, and identity declarations from
 the authored service TOMLs.  It uses ``/var/tmp`` for all writable mounts,
@@ -51,7 +51,7 @@ from quadletgen.parser import (  # noqa: E402
 CONTAINER_CLI = os.environ.get("CONTAINER_CLI", "podman")
 OVERLAY_ROOT = REPO / "overlay-root"
 FLEET_PATH = REPO / "quadlets/_fleet.toml"
-SERVICE_NAMES = ("sonarr", "radarr", "prowlarr", "sabnzbd")
+SERVICE_NAMES = ("sonarr", "radarr", "prowlarr", "sabnzbd", "bazarr")
 DEFAULT_STARTUP_TIMEOUT_SECONDS = 60
 DEFAULT_OBSERVATION_SECONDS = 10
 POLL_SECONDS = 1

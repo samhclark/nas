@@ -53,11 +53,13 @@ These are considered active and in use on the real machine unless explicitly sta
 
 ### Active media-automation Quadlets
 
-These four services are deployed and validated in production:
+Sonarr, Radarr, Prowlarr, and SABnzbd are deployed and validated in production.
+Bazarr is configured and still needs its rollout checks:
 - `sonarr.container` - TV-library automation; rootless under `etc/containers/systemd/users/51410/`
 - `radarr.container` - movie-library automation; rootless under `etc/containers/systemd/users/51420/`
 - `prowlarr.container` - indexer management; rootless under `etc/containers/systemd/users/51430/`
 - `sabnzbd.container` - Usenet downloader; rootless under `etc/containers/systemd/users/51440/`
+- `bazarr.container` - subtitle automation; rootless under `etc/containers/systemd/users/51450/`
 
 ### Supporting Host Units
 
@@ -84,7 +86,7 @@ Important non-container units:
 - VictoriaLogs data lives under `tank/victoria-logs/data`; it has no snapshot
   or backup policy
 - Jellyfin state lives under `tank/jellyfin/{config,cache}`; `tank/videos` is mounted at `/var/zfs/tank/videos`, with `movies` and `tv-shows` exposed read-only to Jellyfin
-- The media-automation target layout is directory-based beneath the existing `tank/videos` dataset: `data/usenet/{incomplete,complete/{movies,tv}}` and `data/media/{movies,tv}`. Sonarr and Radarr mount the common `/data` root so imports can use hardlinks; SABnzbd mounts `/data/usenet`; Jellyfin mounts `/data/media` read-only.
+- The media-automation target layout is directory-based beneath the existing `tank/videos` dataset: `data/usenet/{incomplete,complete/{movies,tv}}` and `data/media/{movies,tv}`. Sonarr and Radarr mount the common `/data` root so imports can use hardlinks; SABnzbd mounts `/data/usenet`; Bazarr and Jellyfin mount `/data/media` read-write and read-only, respectively.
 - Required media layout paths are root-owned, group-owned by the fleet `media` GID `52000`, and setgid mode `2775`. Existing descendants retain their user owner during migration but receive the shared group and group access. The generated shared-storage unit validates the required-root contract but never creates, moves, chowns, or relabels production media automatically.
 - `tank/videos` snapshots intentionally stop at five weekly snapshots (about one month); the downloaded media itself is intentionally outside the backup policy.
 - Immich authoritative state lives under `tank/immich-server/library` and `tank/immich-database/data`; generated thumbnails and encoded video have separate datasets so a future backup policy can exclude them
@@ -229,7 +231,7 @@ Keep the configuration boundary explicit:
 - Use category buckets inside that range: `511xx` for storage, `512xx` for observability, `513xx` for ingress/edge
 - Current storage/application allocation: `_nas_garage` uses host UID/GID `51110`; `_nas_jellyfin` uses `51120`; `_nas_immichserver` uses `51130`; `_nas_immichdatabase` uses `51140`; `_nas_immichvalkey` uses `51150`; `_nas_immichmachinelearning` uses `51160`
 - Current observability/edge allocation: `_nas_grafana` uses `51210`; `_nas_vmalert` uses `51220`; `_nas_blackbox` uses `51230`; `_nas_alertmanager` uses `51240`; `_nas_victoriametrics` uses `51250`; `_nas_jellyfinmetrics` uses `51260`; `_nas_victorialogs` uses `51270`; `_nas_caddy` uses `51310`
-- Current media-automation allocation: `_nas_sonarr` uses `51410`; `_nas_radarr` uses `51420`; `_nas_prowlarr` uses `51430`; `_nas_sabnzbd` uses `51440`. All four services are deployed and validated in production.
+- Current media-automation allocation: `_nas_sonarr` uses `51410`; `_nas_radarr` uses `51420`; `_nas_prowlarr` uses `51430`; `_nas_sabnzbd` uses `51440`; `_nas_bazarr` uses `51450`.
 - Subordinate ID ranges are a separate allocator, but keep them globally non-overlapping; the current convention is to derive a `65536`-wide range from the host UID for readability, e.g. `_nas_grafana:512100000:65536`
 - UIDs are allocate-only: never reuse a UID from a retired service. File ownership is numeric and outlives the user — ZFS snapshots in particular can hand a retired UID's files to whatever service reuses it. `quadlets/*.toml` is the registry of active allocations; when the first service is actually retired, record its UID here as retired and add a `retired-uids` check to `generate-quadlets.py`.
 
@@ -237,7 +239,7 @@ Keep the configuration boundary explicit:
 
 Current state:
 - Eighteen image-defined services are deployed as rootless admin-managed user Quadlets: ingress, observability (including VictoriaLogs), Garage, Jellyfin, the four-component Immich application, and the four media-automation services. Immich first use and a clean post-fix reboot are validated; the earlier reboot exposed and motivated the mapped-ownership storage-readiness fix. Jellyfin's service path is operational, while representative playback and VM-isolated hardware transcoding remain active validation work.
-- All eighteen configured services run under libkrun with explicit CPU and RAM annotations, `StopSignal=SIGINT`, and one root-managed routed TAP per microVM
+- All configured services run under libkrun with explicit CPU and RAM annotations, `StopSignal=SIGINT`, and one root-managed routed TAP per microVM
 - Rootless-service files are **generated**: edit `quadlets/<service>.toml`, run `make generate-quadlets`, and commit both. Each service declares an application, a unique role within that application, named endpoints with allowed consumers, and any bounded startup dependencies. Never hand-edit files with a `GENERATED` header — CI (`build-preflight.yaml` job `verify-repository`) fails on drift. The generated account-unit, storage-unit, secret, asset, and active-TAP manifests drive non-Python consumers; adding a service does not require a manual Containerfile enablement line. Add encrypted values to `overlay-root/usr/share/nas/secrets/secrets.sops.yaml` for declared secrets.
 
 Useful reference points for future rootless work:
@@ -257,12 +259,12 @@ Useful reference points for future rootless work:
 - Jellyfin's `tank/videos` declaration is required-existing, preserve-owner, and read-only. The generic runtime may repair labels after an explicit request but never creates that dataset or changes its ownership/modes.
 - The image carries a narrowly scoped crun 1.29.1 patch adding `krun.tap_name`; it calls libkrun's upstream `krun_add_net_tap()` with the embedded DHCP client enabled. TAP-backed Quadlets must include `AddDevice=/dev/net/tun` because libkrun opens that device after entering the container mount namespace.
 - `systemd-networkd` owns the generated `krun-*` TAPs and the host `wg-arr` WireGuard interface; NetworkManager explicitly ignores both patterns. Each service has a dedicated /30, a one-address DHCP pool with Rapid Commit, and a TAP owned by that service's host account. Generated nftables rules provide anti-spoofing, declared inter-service edges, host publication, and outbound NAT. Do not hand-edit generated `.netdev`, `.network`, or `nas-krun-*.nft` files.
-- Sonarr, Radarr, Prowlarr, and SABnzbd select the typed Mullvad egress. Their source-based policy routes preserve RFC1918 and tailnet return paths, send MagicDNS only through `tailscale0`, and send other outbound traffic only through `wg-arr`; established-traffic guards plus a final per-TAP nftables drop form the kill switch if routing falls through. `nas-egress-mullvad.service` proves interface, route, DNS route, and firewall policy readiness, not a successful WireGuard handshake.
+- Sonarr, Radarr, Prowlarr, SABnzbd, and Bazarr select the typed Mullvad egress. Their source-based policy routes preserve RFC1918 and tailnet return paths, send MagicDNS only through `tailscale0`, and send other outbound traffic only through `wg-arr`; established-traffic guards plus a final per-TAP nftables drop form the kill switch if routing falls through. `nas-egress-mullvad.service` proves interface, route, DNS route, and firewall policy readiness, not a successful WireGuard handshake.
 - The generated `nas-krun-network-policy.service` is the fail-closed readiness boundary for TAP guests. It publishes a current-boot marker only after networkd configures every active TAP and nftables exposes the required chains; TAP Quadlets wait for that marker and verify a guest TCP listener after startup so a missed one-shot DHCP exchange forces a VM restart. Stopping networkd or nftables removes readiness and stops the dedicated service user managers before the ruleset is flushed. Do not weaken this lifecycle ordering or start TAP guests based only on TAP existence.
 - Disabled TOML services are excluded from TAPs, peer host entries, and nftables. TAP host publications deliberately accept only `127.0.0.1` (loopback-only) and `0.0.0.0` (all host addresses); add explicit policy semantics and namespace coverage before expanding that schema.
 - Caddy uses 2 vCPUs and 512 MiB under libkrun. Root nftables publishes TCP 80/443, UDP 443, and loopback-only TCP 2019 to its guest; Caddy reaches backends by generated `*.krun` host entries and explicit inter-TAP allow rules. No Podman publisher, pasta, passt, or low-port host sysctl is involved. The krun handler still lacks `podman exec`, so configuration changes use service restarts.
 - Jellyfin uses a 4-vCPU, 4-GiB libkrun guest on its dedicated TAP, with loopback-only host TCP 8096 DNAT behind Caddy. Its image healthcheck is disabled because it requires unsupported `podman exec`; blackbox probing is authoritative. The deployment deliberately omits `/dev/dri` hardware acceleration and UDP discovery; after the reviewed migration it mounts `/var/zfs/tank/videos/data/media` read-only without Podman `:z`/`:Z` relabeling.
-- The four media-automation UIs have no host publications. Caddy reaches their declared guest endpoints and applies a shared source-IP guard permitting LAN private ranges plus Tailscale `100.64.0.0/10`, returning HTTP 403 to other sources.
+- The media-automation UIs have no host publications. Caddy reaches their declared guest endpoints and applies a shared source-IP guard permitting LAN private ranges plus Tailscale `100.64.0.0/10`, returning HTTP 403 to other sources.
 - Immich uses four dedicated libkrun guests. The server alone is loopback-published on TCP 2283 behind Caddy; PostgreSQL, Valkey, and machine learning are reachable only over generated consumer edges. The server waits boundedly for PostgreSQL and Valkey, while machine learning remains independently restartable. See `docs/operations/immich.md` for first-use and recovery boundaries.
 - The Jellyfin exporter polls the authenticated local `/Sessions` API and exposes only loopback Prometheus metrics on TCP 9594. It includes usernames and current titles as metric labels for playback diagnosis, but omits remote addresses.
 - Ordinary rootless crun with direct `/dev/dri/renderD128` proved that the host, Jellyfin image, permissions, and Intel media stack can expose VA-API codecs, but it is not an acceptable production fallback for this deployment because it removes the required VM boundary around Jellyfin and its plugins.

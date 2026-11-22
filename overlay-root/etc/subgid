@@ -20,3 +20,5 @@ _nas_radarr:52000:1
 _nas_prowlarr:514300000:65536
 _nas_sabnzbd:514400000:65536
 _nas_sabnzbd:52000:1
+_nas_bazarr:514500000:65536
+_nas_bazarr:52000:1

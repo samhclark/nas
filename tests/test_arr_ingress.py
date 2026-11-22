@@ -16,6 +16,7 @@ ARR_SITES = {
     "radarr.i.samhclark.com": "radarr.krun:7878",
     "prowlarr.i.samhclark.com": "prowlarr.krun:9696",
     "sabnzbd.i.samhclark.com": "sabnzbd.krun:8080",
+    "bazarr.i.samhclark.com": "bazarr.krun:6767",
 }
 
 

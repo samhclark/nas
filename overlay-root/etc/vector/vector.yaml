@@ -10,6 +10,14 @@ sources:
     current_boot_only: false
     since_now: false
 
+  bazarr_journald:
+    type: journald
+    include_matches:
+      _UID:
+        - "51450"
+    current_boot_only: false
+    since_now: false
+
   blackbox_exporter_journald:
     type: journald
     include_matches:
@@ -147,6 +155,14 @@ transforms:
       .host = "nas"
       .service = "alertmanager"
 
+  bazarr:
+    type: remap
+    inputs:
+      - bazarr_journald
+    source: |
+      .host = "nas"
+      .service = "bazarr"
+
   blackbox_exporter:
     type: remap
     inputs:
@@ -280,6 +296,7 @@ sinks:
     type: http
     inputs:
       - alertmanager
+      - bazarr
       - blackbox_exporter
       - caddy
       - garage

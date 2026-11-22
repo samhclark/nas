@@ -56,7 +56,7 @@ egress = "mullvad"
 [[container.endpoints]]
 name = "http"
 port = 7878
-consumers = ["caddy", "prowlarr"]
+consumers = ["caddy", "prowlarr", "bazarr"]
 
 [assets]
 path = "/usr/share/nas/radarr"
