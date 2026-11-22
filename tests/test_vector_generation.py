@@ -37,6 +37,7 @@ class VectorGenerationTests(unittest.TestCase):
     def test_declared_services_render_quadlet_and_vector_identity(self):
         expected = {
             "alertmanager": 51240,
+            "bazarr": 51450,
             "blackbox-exporter": 51230,
             "caddy": 51310,
             "garage": 51110,

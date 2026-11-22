@@ -32,6 +32,7 @@ AddHost=sonarr.krun:10.253.14.2
 AddHost=radarr.krun:10.253.15.2
 AddHost=prowlarr.krun:10.253.16.2
 AddHost=sabnzbd.krun:10.253.17.2
+AddHost=bazarr.krun:10.253.20.2
 AddHost=host.krun.internal:10.253.3.1
 DNS=100.100.100.100
 User=0

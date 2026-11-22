@@ -122,6 +122,8 @@ systemd:
       mask: true
     - name: nas-prepare-alertmanager-storage.service
       mask: true
+    - name: nas-prepare-bazarr-storage.service
+      mask: true
     - name: nas-prepare-caddy-storage.service
       mask: true
     - name: nas-prepare-garage-storage.service

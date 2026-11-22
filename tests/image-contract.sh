@@ -28,7 +28,8 @@ for adapter in \
     /usr/share/nas/sonarr/sonarr-entrypoint.sh \
     /usr/share/nas/radarr/radarr-entrypoint.sh \
     /usr/share/nas/prowlarr/prowlarr-entrypoint.sh \
-    /usr/share/nas/sabnzbd/sabnzbd-entrypoint.sh; do
+    /usr/share/nas/sabnzbd/sabnzbd-entrypoint.sh \
+    /usr/share/nas/bazarr/bazarr-entrypoint.sh; do
     test -x "${adapter}"
 done
 

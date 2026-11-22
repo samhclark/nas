@@ -42,8 +42,8 @@ class CompilerCharacterizationTests(unittest.TestCase):
     def test_current_fleet_is_typed_and_uid_ordered(self):
         fleet = current_fleet()
 
-        self.assertEqual(len(fleet.services), 18)
-        self.assertEqual(len(fleet.active_taps), 18)
+        self.assertEqual(len(fleet.services), 19)
+        self.assertEqual(len(fleet.active_taps), 19)
         self.assertEqual(
             [service.host.uid for service in fleet.services],
             sorted(service.host.uid for service in fleet.services),
@@ -63,6 +63,7 @@ class CompilerCharacterizationTests(unittest.TestCase):
         }
         expected_logged = {
             "alertmanager",
+            "bazarr",
             "blackbox-exporter",
             "caddy",
             "garage",

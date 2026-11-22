@@ -2,33 +2,25 @@
 
 ## Status and scope
 
-This document describes the authored first Arr-stack slice:
+Sonarr, Radarr, Prowlarr, and SABnzbd are deployed and operational on the
+NAS alongside Jellyfin. Bazarr adds subtitle automation to the same fleet.
+Its first-use and rollout checks are below.
 
-- Sonarr for TV;
-- Radarr for movies;
-- Prowlarr for indexers;
-- SABnzbd for Usenet downloads; and
-- the existing Jellyfin media server.
-
-The four services are rootless LSIO containers adapted for this host's libkrun
-execution boundary. Each has a dedicated TAP guest and a separate managed
-config dataset. Sonarr, Radarr, Prowlarr, and SABnzbd are deployed and
-operational on the NAS, and all are selected for Mullvad egress. This runbook
-describes their current topology and configuration; it is not a substitute for
-checking live service health, a successful WireGuard handshake, or a completed
-download when performing an operational change.
+Each automation service uses a rootless LinuxServer image adapted for
+libkrun, a dedicated TAP guest, a managed config dataset, and Mullvad egress.
 
 ## Runtime shape
 
 The containers use the generated `*.krun` names and are not connected by host
-port publishing. Their initial declared endpoints and allowed consumers are:
+port publishing. The declared endpoints and allowed consumers are:
 
 | Service | Endpoint | Consumers |
 | --- | --- | --- |
-| Sonarr | `sonarr.krun:8989` | Caddy, Prowlarr |
-| Radarr | `radarr.krun:7878` | Caddy, Prowlarr |
+| Sonarr | `sonarr.krun:8989` | Caddy, Prowlarr, Bazarr |
+| Radarr | `radarr.krun:7878` | Caddy, Prowlarr, Bazarr |
 | Prowlarr | `prowlarr.krun:9696` | Caddy, Sonarr, Radarr |
-| SABnzbd | `sabnzbd.krun:8080` | Caddy, Sonarr, Radarr |
+| SABnzbd | `sabnzbd.krun:8080` | Caddy, Sonarr, Radarr, Prowlarr |
+| Bazarr | `bazarr.krun:6767` | Caddy |
 
 The management UIs are reached through Caddy at:
 
@@ -37,11 +29,12 @@ https://sonarr.i.samhclark.com
 https://radarr.i.samhclark.com
 https://prowlarr.i.samhclark.com
 https://sabnzbd.i.samhclark.com
+https://bazarr.i.samhclark.com
 ```
 
 Caddy's shared private-ingress handler allows LAN private ranges and the
 Tailscale `100.64.0.0/10` range, and returns `403` for other source ranges.
-These four UIs therefore have no intended WAN access. The Caddy hostnames are
+These UIs therefore have no intended WAN access. The Caddy hostnames are
 the right values for a human browser; service-to-service configuration should
 use the `*.krun` endpoints below so it stays on the declared inter-TAP edges.
 
@@ -95,6 +88,39 @@ repo-managed secrets. Do not configure the apps with host paths such as
 `/var/zfs/tank/videos/...`, because those paths do not exist inside the
 containers and would defeat the shared `/data` contract.
 
+## Bazarr first use and rollout checks
+
+1. After the usual NAS image update, check the Bazarr user unit, its config
+   readiness unit, and the shared media readiness unit. Confirm the UI works
+   over Caddy from LAN or Tailscale and receives HTTP 403 or is unreachable from
+   outside those networks. Enable Bazarr UI authentication under Settings →
+   General → Security.
+2. In Settings → Sonarr and Settings → Radarr, enable each integration and
+   enter `sonarr.krun` on port `8989` and `radarr.krun` on port `7878`, using
+   HTTP and each service's API key from its own UI. Use the connection test for
+   each. Store the keys and provider credentials in Bazarr's private config.
+   Leave Path Mappings empty for both integrations. Bazarr sees the same
+   `/data/media/tv` and `/data/media/movies` paths that the APIs report.
+3. Set Subtitle Folder to **Alongside Media File** and leave Bazarr's
+   permission override disabled so the entrypoint's `umask 002` applies.
+   Choose subtitle providers and language profiles, then assign profiles to a
+   small sample of existing movies and series first. See the
+   [TRaSH Bazarr setup guide](https://trash-guides.info/Bazarr/Setup-Guide/) and
+   [existing-library configuration](https://trash-guides.info/Bazarr/After-install-configuration/).
+4. Download a sidecar for one existing movie and one existing episode.
+   Confirm both land alongside the videos, have host group `52000` and
+   group read/write access, and appear in Jellyfin after scanning. If writes
+   fail for an individual title, inspect that directory's group, setgid,
+   access bits, and SELinux label first. The readiness gate checks the mount
+   and declared roots. Older title directories may have drifted independently.
+   Verify provider traffic uses Mullvad and fails closed if `wg-arr` is
+   withdrawn during an operator maintenance window.
+
+Bazarr's guest UID/GID `1000:1000` map to host UID `51450` and media GID
+`52000`. Its writable media mount is limited to `/data/media`. The existing
+shared storage policy supplies the SELinux label, and setgid library directories
+preserve the shared group for new sidecars.
+
 ## Storage and backup boundary
 
 The shared existing ZFS dataset is `tank/videos`, mounted at
@@ -110,7 +136,7 @@ The shared existing ZFS dataset is `tank/videos`, mounted at
 
 The layout is intentionally a single `/data` tree so imports can use atomic
 renames and hardlinks where an application supports them. The shared group is
-GID `52000` (`media`). Sonarr, Radarr, SABnzbd, and Jellyfin are members of
+GID `52000` (`media`). Sonarr, Radarr, SABnzbd, Bazarr, and Jellyfin are members of
 that group; shared directories use group `52000`, mode `2775`, and inherited
 setgid semantics. Shared regular files are group-readable and group-writable.
 Jellyfin mounts only `/data/media`, read-only. The media payload is
@@ -119,16 +145,16 @@ short-lived frequent, hourly, daily, and weekly snapshots; the five weekly
 snapshots are the approximately one-month outer boundary. No monthly or
 yearly snapshot timer is configured for this dataset.
 
-Each Arr service has its own managed config dataset:
-`tank/sonarr/config`, `tank/radarr/config`, `tank/prowlarr/config`, and
-`tank/sabnzbd/config`. These are application state and should be treated
-separately from the intentionally unbacked media payload.
+Each automation service has its own managed config dataset.
+`tank/sonarr/config`, `tank/radarr/config`, `tank/prowlarr/config`,
+`tank/sabnzbd/config`, and `tank/bazarr/config`. These datasets store
+application state separately from the media payload.
 
 ## Operator migration runbook
 
-The following is a reviewed runbook for an operator on the NAS. No command in
-this document has been run by the coding agent. Run one phase at a time and
-return the requested output before proceeding. The commands use explicit
+These phases cover the original library migration. Bazarr uses the migrated
+tree directly. During a migration, run one phase at a time and return the
+requested output before proceeding. The commands use explicit
 paths, refuse to overwrite existing destination directories, and do not use
 destructive recursive deletion.
 

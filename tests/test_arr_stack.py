@@ -15,6 +15,7 @@ EXPECTED = {
     "radarr": (51420, "10.253.15.2", 7878),
     "prowlarr": (51430, "10.253.16.2", 9696),
     "sabnzbd": (51440, "10.253.17.2", 8080),
+    "bazarr": (51450, "10.253.20.2", 6767),
 }
 
 
@@ -32,7 +33,7 @@ class ArrStackTests(unittest.TestCase):
             for artifact in compile_fleet(cls.fleet)
         }
 
-    def test_stack_has_four_pinned_mullvad_selected_guests(self):
+    def test_stack_has_pinned_mullvad_selected_guests(self):
         self.assertEqual(set(self.services), set(EXPECTED))
         for name, (_, address, port) in EXPECTED.items():
             with self.subTest(service=name):
@@ -115,10 +116,23 @@ class ArrStackTests(unittest.TestCase):
             "Volume=/var/zfs/tank/videos/data/usenet:/data/usenet",
             sabnzbd,
         )
-        for quadlet in (sonarr, radarr, sabnzbd):
+        bazarr = self.artifacts[
+            Path("etc/containers/systemd/users/51450/bazarr.container")
+        ]
+        media_mounts = [
+            line for line in bazarr.splitlines()
+            if line.startswith("Volume=/var/zfs/tank/videos")
+        ]
+        self.assertEqual(
+            media_mounts, ["Volume=/var/zfs/tank/videos/data/media:/data/media"]
+        )
+        self.assertIn("Volume=/var/lib/bazarr/config:/config", bazarr)
+        for quadlet in (sonarr, radarr, sabnzbd, bazarr):
             self.assertIn("GroupAdd=keep-groups", quadlet)
 
-        for name, uid in (("sonarr", 51410), ("radarr", 51420), ("sabnzbd", 51440)):
+        for name, (uid, _, _) in EXPECTED.items():
+            if name == "prowlarr":
+                continue
             with self.subTest(storage_manifest=name):
                 manifest = self.artifacts[
                     Path(f"usr/share/nas/storage/{name}.storage-manifest")
@@ -181,6 +195,9 @@ class ArrStackTests(unittest.TestCase):
             ("krun-51410", "krun-51440", 8080),
             ("krun-51420", "krun-51440", 8080),
             ("krun-51430", "krun-51440", 8080),
+            ("krun-51310", "krun-51450", 6767),
+            ("krun-51450", "krun-51410", 8989),
+            ("krun-51450", "krun-51420", 7878),
         )
         for source, target, port in expected:
             with self.subTest(source=source, target=target, port=port):
@@ -190,6 +207,19 @@ class ArrStackTests(unittest.TestCase):
                     if f'iifname "{source}" oifname "{target}"' in line
                 )
                 self.assertIn(f"tcp dport {{ {port} }} accept", line)
+
+        self.assertEqual(
+            set(self.services["bazarr"].endpoints_by_name["http"].consumers),
+            {"caddy"},
+        )
+        self.assertEqual(
+            {
+                name
+                for name, service in self.services.items()
+                if "bazarr" in service.endpoints_by_name["http"].consumers
+            },
+            {"sonarr", "radarr"},
+        )
 
 
 if __name__ == "__main__":
