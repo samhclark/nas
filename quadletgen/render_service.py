@@ -223,6 +223,8 @@ def container_unit(service: Service, fleet: Fleet) -> str:
         )
     lines.append("Restart=always")
     lines.append(f"RestartSec={service.unit.restart_sec}")
+    if service.unit.success_exit_status is not None:
+        lines.append(f"SuccessExitStatus={service.unit.success_exit_status}")
     timeout_start_sec = service.unit.timeout_start_sec
     if timeout_start_sec is None and (service.storage or service.shared_storage):
         timeout_start_sec = 330

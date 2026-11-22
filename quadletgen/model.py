@@ -274,6 +274,7 @@ class StartupSpec:
 class UnitSpec:
     restart_sec: int = 30
     timeout_start_sec: int | None = None
+    success_exit_status: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1060,6 +1061,11 @@ def _validate_startup(service: Service) -> None:
 def _validate_unit(service: Service) -> None:
     path = f"{service.source.name}: [unit]"
     _validate_integer(service.unit.restart_sec, f"{path}.restart-sec", minimum=0)
+    if service.unit.success_exit_status is not None:
+        _validate_integer(
+            service.unit.success_exit_status, f"{path}.success-exit-status",
+            minimum=1, maximum=255,
+        )
     if service.unit.timeout_start_sec is not None:
         _validate_integer(
             service.unit.timeout_start_sec,

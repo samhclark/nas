@@ -115,6 +115,15 @@ containers and would defeat the shared `/data` contract.
    and declared roots. Older title directories may have drifted independently.
    Verify provider traffic uses Mullvad and fails closed if `wg-arr` is
    withdrawn during an operator maintenance window.
+5. Once the sample passes, open Settings → Languages → Profiles in Bazarr.
+   Under **Default Language Profiles For Newly Added Shows**, enable **Series**
+   and **Movies**, select the desired profile for each, and save. These defaults
+   apply when Bazarr first imports a title. In the Series and Movies views,
+   select the existing titles you want covered, use **Change Profile** in the
+   bulk toolbar, and save each selection.
+6. On the next new Sonarr series and Radarr movie, wait for Bazarr to import
+   each title. Check its profile in Bazarr before assigning anything manually.
+   Both titles should already have their respective default profiles.
 
 Bazarr's guest UID/GID `1000:1000` map to host UID `51450` and media GID
 `52000`. Its writable media mount is limited to `/data/media`. The existing

@@ -64,6 +64,7 @@ ExecStartPre=/usr/local/bin/nas-wait-for-readiness.sh marker /run/nas-storage/me
 ExecStartPost=/usr/bin/bash -ceu 'for i in {1..300}; do if /usr/bin/timeout 1 /usr/bin/bash -c "</dev/tcp/10.253.20.2/6767" >/dev/null 2>&1; then exit 0; fi; sleep 1; done; echo "libkrun guest 10.253.20.2:6767 was not reachable" >&2; exit 1'
 Restart=always
 RestartSec=30
+SuccessExitStatus=156
 TimeoutStartSec=900
 
 [Install]

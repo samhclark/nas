@@ -69,6 +69,10 @@ class ArrStackTests(unittest.TestCase):
                 self.assertNotIn("PublishPort=", quadlet)
                 self.assertIn("DNS=100.100.100.100", quadlet)
                 self.assertIn("HealthCmd=none", quadlet)
+                status_lines = [
+                    line for line in quadlet.splitlines() if line.startswith("SuccessExitStatus=")
+                ]
+                self.assertEqual(status_lines, ["SuccessExitStatus=156"] if name == "bazarr" else [])
 
     def test_dotnet_arr_quadlets_use_writable_guest_tmp(self):
         for name, uid in (
