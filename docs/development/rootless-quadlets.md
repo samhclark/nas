@@ -28,6 +28,26 @@ Useful current examples:
 - `quadlets/garage.toml`: multiple ZFS mounts and exact mount readiness;
 - `quadlets/caddy.toml`: public TCP/UDP ingress and inter-service edges.
 
+### Renovate image updates
+
+The **Generate Renovate Quadlets** workflow runs on same-repository Renovate
+PRs against `main`. It runs the generator from the PR's common ancestor with
+`main` after verifying that each source change updates only the existing
+image's tag or digest. It commits the affected generated units together on the
+PR branch. GitHub rejects the commit if the branch moved while the job ran.
+The App's commit triggers Build Check. Review that commit and the proposed
+pins before merging. For a mixed or manually edited PR, run
+`make generate-quadlets` and commit the outputs yourself.
+
+For one-time setup, register a private GitHub App named
+`samhclark-nas-quadlets` with this repository's URL as its homepage. Disable
+webhooks, grant the repository **Contents: Read and write** permission, choose
+**Only on this account**, and install the App only on `samhclark/nas`. Store its
+Client ID as the repository Actions variable `QUADLETS_APP_CLIENT_ID` and its
+generated PEM key as the Actions secret `QUADLETS_APP_PRIVATE_KEY`. The
+App's bot email is listed in `renovate.json` so Renovate can refresh the PR
+after generation. [GitHub App setup for Actions](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/making-authenticated-api-requests-with-a-github-app-in-a-github-actions-workflow)
+
 ## Add a service
 
 ### Before adding an application group

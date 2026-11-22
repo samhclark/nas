@@ -1,0 +1,77 @@
+name: Generate Renovate Quadlets
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, reopened, synchronize]
+    paths: ['quadlets/*.toml']
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    if: >-
+      github.event.pull_request.user.login == 'renovate[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      startsWith(github.event.pull_request.head.ref, 'renovate/') &&
+      github.event.sender.login != 'samhclark-nas-quadlets[bot]'
+    concurrency:
+      group: renovate-quadlets-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.9"
+          enable-cache: false
+
+      - name: Generate from the trusted common ancestor and proposed image pins
+        id: generate
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          git fetch --no-tags origin "refs/pull/$PR_NUMBER/head"
+          if [[ "$(git rev-parse FETCH_HEAD)" != "$PR_HEAD" ]]; then
+            echo "A newer PR revision is already available."
+            exit 0
+          fi
+          git worktree add --detach "$RUNNER_TEMP/quadlets-base" "$(git merge-base HEAD "$PR_HEAD")"
+          cd "$RUNNER_TEMP/quadlets-base"
+          python3 -I "$GITHUB_WORKSPACE/.github/scripts/renovate-quadlets.py" "$PR_HEAD" "$RUNNER_TEMP/additions.json"
+          if [[ -s "$RUNNER_TEMP/additions.json" ]]; then
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Get the Quadlet App installation token
+        if: steps.generate.outputs.changed == 'true'
+        id: app
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        with:
+          client-id: ${{ vars.QUADLETS_APP_CLIENT_ID }}
+          private-key: ${{ secrets.QUADLETS_APP_PRIVATE_KEY }}
+          permission-contents: write
+
+      - name: Commit generated files if the PR head still matches
+        if: steps.generate.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          jq -n --slurpfile additions "$RUNNER_TEMP/additions.json" '{
+            query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { url } } }",
+            variables: {input: {
+              branch: {repositoryNameWithOwner: env.GITHUB_REPOSITORY, refName: env.PR_BRANCH},
+              expectedHeadOid: env.PR_HEAD,
+              message: {headline: "Generate Quadlets for updated image pins"},
+              fileChanges: {additions: $additions[0]}
+            }}
+          }' | gh api graphql --input - --jq '.data.createCommitOnBranch.commit.url'
