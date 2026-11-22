@@ -9,6 +9,9 @@
     "custom.regex",
     "github-actions"
   ],
+  "gitIgnoredAuthors": [
+    "/^[0-9]+\\+samhclark-nas-quadlets\\[bot\\]@users\\.noreply\\.github\\.com$/"
+  ],
   "customManagers": [
     {
       "customType": "regex",
@@ -134,7 +137,7 @@
       "internalChecksFilter": "strict"
     },
     {
-      "description": "Remind maintainers to refresh committed Quadlet outputs",
+      "description": "Explain generated Quadlet updates",
       "matchManagers": [
         "custom.regex"
       ],
@@ -142,7 +145,7 @@
         "quadlets/*.toml"
       ],
       "prBodyNotes": [
-        "Run `make generate-quadlets` and commit the generated `overlay-root/` changes before merging."
+        "The Generate Renovate Quadlets workflow commits generated units to this branch for image-only updates. Review both the source pins and generated units before merging."
       ]
     },
     {
