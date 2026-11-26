@@ -69,7 +69,7 @@ jobs:
           jq -n --slurpfile additions "$RUNNER_TEMP/additions.json" '{
             query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { url } } }",
             variables: {input: {
-              branch: {repositoryNameWithOwner: env.GITHUB_REPOSITORY, refName: env.PR_BRANCH},
+              branch: {repositoryNameWithOwner: env.GITHUB_REPOSITORY, branchName: env.PR_BRANCH},
               expectedHeadOid: env.PR_HEAD,
               message: {headline: "Generate Quadlets for updated image pins"},
               fileChanges: {additions: $additions[0]}
