@@ -1,38 +1,13 @@
 # Application backup and replication design
 
-Status: implemented, provisioned, and deployed for Immich as of 2026-08-30.
-The local repository was initialized and structurally checked successfully;
-the first B2 mirror exposed the rejected passt networking path. The deployed
-root-owned TAP and explicit guest-DNS corrections now carry requests to B2.
-That validation exposed a final prefix-boundary defect: rclone probed the
-parent object `immich/restic` while the application key correctly permits only
-`immich/restic/`. After the directory-shaped remote-root correction was
-deployed, production confirmed that the sync guest wrote the complete 604-byte
-empty repository, but the immediately following comparison guest missed
-libkrun's single-shot 100 ms DHCP response window and returned a temporary
-error. Sync and its acceptance comparison now run sequentially in one rclone
-guest. Production validation completed the initial mirror with zero
-differences and two matching repository objects, but the host runner did not
-return successfully or record remote success. The first backup attempt exposed
-that dropping every capability prevents guest root from traversing Immich's
-private `0750`, UID/GID `51130` snapshot root. The no-network photo-reading
-guest now receives only `CAP_DAC_READ_SEARCH`; repository-only restic guests
-and the rclone guest remain capability-free. The next production attempt could
-traverse the snapshot root, but restic's device filter treated all descendants
-across the virtiofs boundary as separate filesystems and saved zero files from
-the measured 40,323,811,505-byte source. The unusable snapshot passed a
-structural check and its five repository objects matched B2; remote success
-still was not recorded because the runner both raced its asynchronous rclone
-log writer and parsed mixed plain-text/JSON output as pure JSON. Logging is now
-synchronized before parsing while preserving both the VM and logger statuses,
-and metric extraction tolerates non-JSON lines. The device filter is removed.
-A post-backup content gate selects the expected host/path/tag, requires at
-least one file and 99% of the measured regular-file bytes, and forgets a
-rejected snapshot before failing. Maintenance validates the newest matching
-snapshot before pruning or replication. Initialization acceptance, the first
-actual recovery point, and restore validation remain pending. The implementation
-remains deliberately application-specific; this document does not define a
-generic backup schema or authorize arbitrary backup hooks in service TOML.
+Status: deployed and validated for Immich. The 2026-11-21 laptop rehearsal
+restored directly from B2 and verified the database, authoritative originals,
+and browser access. The separately escrowed read-only B2 credential still
+requires an end-to-end test under R3. See
+[`../operations/immich-restore.md`](../operations/immich-restore.md) for the
+procedure and evidence. The implementation remains application-specific; it
+does not define a generic backup schema or authorize arbitrary backup hooks in
+service TOML.
 
 ## Recovery boundary
 
@@ -154,13 +129,7 @@ The stable operator entry points are:
 
 The daily timer runs at 04:00 America/Chicago, after Immich's 02:00 database
 dump. Deployment follows the normal main-branch image flow. B2 and SOPS
-provisioning completed on 2026-08-30. Local repository initialization and its
-first structural check also completed that day. The initial empty-repository
-mirror and byte comparison subsequently completed with zero differences. The
-runner did not record remote success, so initialization acceptance remains
-pending. The operator deploys the private-source traversal correction, retries
-initialization and the first backup run, and returns secret-safe output from
-reviewed commands.
+provisioning completed on 2026-08-30.
 
 ## Verification and completion
 
@@ -175,11 +144,11 @@ Local and remote structural checks run weekly. The remote check rotates
 twelve weeks. These checks complement the byte comparison after each mirror;
 none substitutes for an application-level restore.
 
-R2 remains incomplete until the first B2 backup is restored from B2 into a
-disposable ZFS dataset and fresh application state. Completion requires the
-database-to-authoritative-file check, representative UI and original-download
-checks, teardown of disposable resources, and production-health revalidation.
-The authoritative procedure is
+R2 was completed by the 2026-11-21 direct-B2 laptop rehearsal, which
+restored a qualifying recovery point into disposable ZFS and application
+state, checked authoritative files and representative browser access, removed
+the disposable resources, and revalidated production health. HEIC rendering
+was not verified. The authoritative procedure and detailed evidence are in
 [`../operations/immich-restore.md`](../operations/immich-restore.md).
 
 Only after Paperless supplies a second concrete consistency and recovery model

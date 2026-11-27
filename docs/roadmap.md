@@ -64,51 +64,14 @@ called out. A task is not active merely because it is listed here.
   were removed and production health rechecked. The reviewed procedure,
   versions, evidence, generated-data classification, and SELinux details are
   in [`operations/immich-restore.md`](operations/immich-restore.md).
-- [ ] **R2 — Back up Immich to encrypted restic storage and Backblaze B2.** A
-  daily host runner pairs the newest validated Immich SQL dump with a later,
-  nonrecursive snapshot of `tank/immich-server/library`. A no-network libkrun
-  guest writes an encrypted local restic repository; a separate guest, which
-  never receives the restic password or photo-library mount, mirrors the
-  repository byte-for-byte to `immich/restic/` in a private B2 bucket. Keep 14
-  daily, 8 weekly, 12 monthly, and 3 yearly restore points; bound uploads to
-  5 MiB/s; alert on stale local or remote success, failed runs, stale integrity
-  verification, and low `/var` capacity; and perform weekly local and remote
-  structural checks with a rotating remote data subset. Operator provisioning
-  completed 2026-08-30: the private bucket, `immich/restic/` lifecycle rule,
-  prefix-scoped application key, five real SOPS values, and external escrow of
-  the restic encryption password are in place. Deployment and local repository
-  initialization/check succeeded; the first mirror exposed the rejected passt
-  path. The generated root-owned `krun-backup` TAP and explicit guest-DNS
-  corrections were deployed and carried a signed request to B2. That
-  request exposed rclone probing the parent object `immich/restic`, outside the
-  key's correct `immich/restic/` prefix restriction. After the
-  directory-shaped correction, the sync guest wrote the complete 604-byte
-  empty repository to B2, but the immediate comparison guest missed libkrun's
-  single-shot 100 ms DHCP window and returned a temporary error. Sync and
-  comparison now share one rclone guest. Production validation completed the
-  initial empty-repository mirror with zero differences and two matching
-  objects, but the runner did not return successfully or record remote success.
-  The first real backup attempt then showed that a capability-free guest root
-  cannot traverse the private `0750`, UID/GID `51130` snapshot root. The
-  no-network photo reader now receives only `CAP_DAC_READ_SEARCH`; all other
-  backup guests remain capability-free. The next attempt reached the snapshot,
-  but `--one-file-system` crossed an unreliable virtiofs device boundary and
-  saved zero files from the measured 40,323,811,505-byte source. Its five
-  structurally valid repository objects matched B2, but remote success again
-  remained unrecorded because the runner raced its asynchronous rclone log
-  writer and treated mixed output as pure JSON. Logging is now synchronized
-  and its metric parser tolerates non-JSON guest diagnostics. The device filter
-  is removed; the nonrecursive ZFS snapshot defines exclusion. A new content
-  gate requires a nonempty snapshot containing at least 99% of the measured
-  regular-file bytes, forgets rejected snapshots, and prevents daily or
-  maintenance replication of an incomplete recovery point. It excludes the
-  visible `.zfs` namespace from measurement and removes historical zero-content
-  snapshots after accepting a valid latest recovery point.
-  Initialization acceptance, the first actual recovery point, and its
-  validation remain pending. R2 is not complete merely when the first upload
-  succeeds: it requires a full isolated restore from B2, representative UI and
-  original-download checks, cleanup of disposable resources, and
-  production-health revalidation. See
+- [x] **R2 — Back up Immich to encrypted restic storage and Backblaze B2.**
+  Completed with the 2026-11-21 direct-B2 laptop rehearsal. A daily runner
+  pairs a validated SQL dump with a later nonrecursive library snapshot and
+  mirrors an encrypted local restic repository to a prefix-scoped B2 bucket.
+  Retention, integrity checks, capacity and success alerts, and a 5 MiB/s upload
+  limit are in place. The rehearsal verified database import, authoritative
+  files and representative browser access, cleaned up disposable resources,
+  and rechecked production health. HEIC rendering was not verified. See
   [`proposals/application-backups.md`](proposals/application-backups.md) and
   [`operations/immich-restore.md`](operations/immich-restore.md).
 - [ ] **R3 — Protect the recovery inputs themselves.** Document and test access
@@ -117,7 +80,8 @@ called out. A task is not active merely because it is listed here.
   and the minimum fresh-host bootstrap sequence. Keep the B2 and restic
   recovery material in the administrator's external password manager rather
   than only on the NAS or in this repository. Secret values remain outside the
-  repository. This can be completed alongside R2.
+  repository. The separately escrowed read-only B2 credential still needs an
+  end-to-end test; the R2 rehearsal used the laptop SOPS age identity.
 
 ## Tier 1: finish existing safety and visibility work
 

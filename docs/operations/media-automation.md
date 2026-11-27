@@ -159,139 +159,16 @@ Each automation service has its own managed config dataset.
 `tank/sabnzbd/config`, and `tank/bazarr/config`. These datasets store
 application state separately from the media payload.
 
-## Operator migration runbook
+On a fresh host the operator prepares the required roots on the mounted
+dataset with owner `root:media`, mode `2775`, and label
+`container_file_t:s0`. The shared-storage unit verifies these roots on boot.
+The original migration from `movies` and `tv-shows` is recorded at Git
+revision `fc0eeb9` in this runbook and its companion scripts.
 
-These phases cover the original library migration. Bazarr uses the migrated
-tree directly. During a migration, run one phase at a time and return the
-requested output before proceeding. The commands use explicit
-paths, refuse to overwrite existing destination directories, and do not use
-destructive recursive deletion.
-
-### Phase 0: read-only preflight
-
-This phase changes nothing. The reviewed collector is
-[`scripts/diagnostics/media-automation-preflight.sh`](../../scripts/diagnostics/media-automation-preflight.sh).
-Copy that file to the NAS, then run this single command from the directory
-containing it:
-
-```bash
-sudo bash ./media-automation-preflight.sh | tee media-automation-preflight.txt
-```
-
-Return `media-automation-preflight.txt`. The script records the current mount,
-dataset, directory, ownership, mode, labels, file types, symlinks, and available
-space. It is kept outside the image because this preflight happens before the
-new image is deployed.
-
-Stop here if `tank/videos` is not the mounted source, `findmnt -R` or `zfs
-list -r` shows a nested mount/dataset, either old source path is missing or is
-a symlink, any destination already exists with content, or the space/type
-output is not understood. Return the output and resolve the discrepancy before
-changing anything. Symlinks inside the source trees are reported for review;
-later phases preserve but never follow them.
-
-### Phase 1: stop Jellyfin and confirm the stop
-
-The existing Jellyfin mount is read-only, but it must still be stopped before
-moving its library directories so it cannot scan while paths change. This is a
-state-changing phase; run it only after reviewing Phase 0. Copy
-[`scripts/operations/media-automation-stop-jellyfin.sh`](../../scripts/operations/media-automation-stop-jellyfin.sh)
-to the NAS, then run this single command from the directory containing it:
-
-```bash
-bash -o pipefail -c 'sudo bash ./media-automation-stop-jellyfin.sh 2>&1 | tee media-automation-stop-jellyfin.txt'
-```
-
-Return `media-automation-stop-jellyfin.txt`. The script validates the Jellyfin
-account and home, records the initial unit states, stops the user service before
-stopping its manager, and fails unless the final manager state is inactive and
-no process remains under Jellyfin's dedicated UID. The outer shell's `pipefail`
-preserves a script failure even though the output is also written through
-`tee`. Stopping the user manager is included as a belt-and-suspenders guard.
-
-### Phase 2: create the target layout
-
-This phase creates only the required empty directory tree and sets the shared
-root contract. It does not move, relabel, or modify media files, and it does
-not modify the existing `movies` or `tv-shows` trees. It rejects symlinks,
-non-directories, unexpected entries under the target subtree, populated
-destinations, a wrong mount source, and a different device. An idempotent rerun
-is safe only while every destination remains empty; existing empty directories
-may have their declared ownership and mode restored. Copy
-[`scripts/operations/media-automation-create-layout.sh`](../../scripts/operations/media-automation-create-layout.sh)
-to the NAS, then run this single command from the directory containing it:
-
-```bash
-bash -o pipefail -c 'sudo bash ./media-automation-create-layout.sh 2>&1 | tee media-automation-create-layout.txt'
-```
-
-Return `media-automation-create-layout.txt`. The script emits concise mount,
-device, exact ownership/mode, and source-preservation evidence. Do not
-continue if it reports a populated destination or any validation failure.
-
-### Phase 3: move the existing library directories without overwrite
-
-This is the only phase that moves existing media. The operation is a
-fail-closed, same-dataset rename with no recursive copy or deletion. It
-revalidates the exact mount, Phase-2 root metadata, source and destination
-types/devices, supported source entry types, Jellyfin shutdown, and open
-`/proc` process references. It normalizes shared-group access before renaming,
-preserves existing user owners except for the two source roots, verifies the
-recursive contract, captures source identities, and uses an explicit rollback
-if the rename stage or its checks fail. `mv --no-copy` forbids cross-filesystem
-copy-and-delete fallback. Rollback status is printed clearly;
-manual intervention is required after a rollback failure. It performs no
-relabeling, deployment, media deletion, or Jellyfin restart.
-
-The `/proc` checks are conservative point-in-time checks, not a kernel write
-lock. Do not start another media copy, shell, scanner, or service while this
-phase runs. This is a single-operator maintenance window; an uncooperative
-root process could always race path-based administration.
-
-Copy [`scripts/operations/media-automation-migrate-library.sh`](../../scripts/operations/media-automation-migrate-library.sh)
-to the NAS, then run this single command from the directory containing it:
-
-```bash
-bash -o pipefail -c 'sudo bash ./media-automation-migrate-library.sh 2>&1 | tee media-automation-migrate-library.txt'
-```
-
-Return `media-automation-migrate-library.txt`. Do not continue to Phase 4
-unless it reports migration success, absent old paths, matching captured
-device/inode identities, exact required-root metadata, and recursive shared
-group verification.
-
-### Phase 4: apply the persistent SELinux label and verify the layout
-
-This phase changes only SELinux extended attributes. It first proves that the
-host is enforcing SELinux and that the deployed policy recursively maps every
-path in the relabel scope to `object_r:container_file_t:s0`, then runs one
-bounded `restorecon -F -R -x`
-over the media dataset while excluding the visible ZFS snapshot control
-directory. It verifies actual labels over that same full-dataset scope,
-destination device/inode identities and counts, required-root ownership/modes, the
-recursive shared-group contract, and Jellyfin shutdown. It never moves or
-deletes media, crosses into another filesystem, traverses snapshots, deploys,
-or restarts Jellyfin.
-
-Copy [`scripts/operations/media-automation-relabel.sh`](../../scripts/operations/media-automation-relabel.sh)
-to the NAS, then run this single command from the directory containing it:
-
-```bash
-bash -o pipefail -c 'sudo bash ./media-automation-relabel.sh 2>&1 | tee media-automation-relabel.txt'
-```
-
-Return `media-automation-relabel.txt`. Do not continue to Phase 5 unless it
-reports successful policy, relabel, identity/count, ownership/mode, label, and
-Jellyfin checks.
-
-### Phase 5: deploy and validate in bounded increments
-
-After the migration output is reviewed, publish/deploy the image through the
-normal repository workflow. Then validate in this order, returning output for
-each step:
+## Verify a deployment
 
 1. Confirm `sops-distribute-secrets.service`, `systemd-networkd`,
-   `nftables`, `tailscaled`, `nas-egress-mullvad.service`, and the four
+   `nftables`, `tailscaled`, `nas-egress-mullvad.service`, and the relevant
    `nas-prepare-*-storage.service` units are healthy.
 2. Confirm `wg-arr` has `10.72.38.9/32`, the `51820` default route, and a
    recent WireGuard handshake. The readiness marker alone is insufficient.
@@ -305,8 +182,5 @@ each step:
 5. Configure the exact application paths and `*.krun` endpoints in the table
    above, then test one small SABnzbd download through Sonarr or Radarr and
    confirm the completed file lands in the correct media directory and is
-   visible to Jellyfin.
-
-Return unit status, interface/routes/handshake evidence, DNS and egress test
-results, ingress results, and the final file paths. Do not call the deployment
-validated until all five groups have evidence.
+   visible to Jellyfin. For a hardlink import, confirm the completed and imported
+   files have the same device and inode.
