@@ -55,7 +55,11 @@ repository_size() {
 }
 
 filesystem_capacity() {
-    "${DF_BIN}" --output=avail,size -B1 -- "${BACKUP_ROOT}" \
+    local path=${BACKUP_ROOT}
+    while [[ ! -d "${path}" ]]; do
+        path="$(dirname -- "${path}")"
+    done
+    "${DF_BIN}" --output=avail,size -B1 -- "${path}" \
         | /usr/bin/awk 'NR == 2 {print $1, $2}'
 }
 
@@ -513,6 +517,18 @@ status_report() {
 
 main() {
     (( $# == 1 )) || usage
+    case "$1" in
+        status)
+            if [[ -e "${LOCK_FILE}" ]]; then
+                exec 9<"${LOCK_FILE}"
+                /usr/bin/flock -sn 9 || { echo "Another Immich backup operation holds ${LOCK_FILE}." >&2; return 1; }
+            fi
+            status_report
+            return
+            ;;
+        init|run|maintain) ;;
+        *) usage ;;
+    esac
     /usr/bin/mkdir -p -- "${BACKUP_ROOT}" "${REPOSITORY}" "${STATE_DIR}" "${LOCK_FILE%/*}"
     /usr/bin/chmod 0700 "${BACKUP_ROOT}" "${REPOSITORY}" "${STATE_DIR}"
     exec 9>"${LOCK_FILE}"
@@ -526,8 +542,6 @@ main() {
         init) initialize_repository ;;
         run) run_backup ;;
         maintain) maintain_repository ;;
-        status) status_report ;;
-        *) usage ;;
     esac
 }
 

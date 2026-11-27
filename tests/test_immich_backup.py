@@ -239,6 +239,21 @@ class ImmichBackupTests(unittest.TestCase):
         self.assertIn("nas_backup_last_run_success{application=\"immich\"} 1", metrics)
         self.assertIn('destination="b2"} 12345', metrics)
 
+    def test_status_preserves_failed_run_metrics(self) -> None:
+        self.assertNotEqual(self.invoke("run", FAKE_FREE="1").returncode, 0)
+        before = self.metrics.read_bytes()
+        result = self.invoke("status")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("local_last_success=0", result.stdout)
+        self.assertEqual(self.metrics.read_bytes(), before)
+
+    def test_status_before_initialization_leaves_storage_untouched(self) -> None:
+        result = self.invoke("status")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.backup.exists())
+        self.assertFalse(self.lock.exists())
+        self.assertFalse(self.metrics.exists())
+
     def test_source_measurement_is_visible_before_the_first_vm(self) -> None:
         result = self.invoke("run")
 
