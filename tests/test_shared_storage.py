@@ -9,7 +9,7 @@ from pathlib import Path
 
 from quadletgen.compiler import compile_fleet
 from quadletgen.model import ConfigError, Fleet
-from quadletgen.parser import load_fleet_config, load_fleet_storage, load_service
+from quadletgen.parser import load_fleet, load_service
 from quadletgen.render_storage import shared_storage_manifest, shared_storage_unit
 from tests.quadlet_test_support import REPO, service_toml
 
@@ -63,12 +63,7 @@ class SharedStorageTests(unittest.TestCase):
                     extra=identity + export,
                 )
             )
-            service = load_service(service_path)
-            return Fleet.build(
-                [service],
-                groups=load_fleet_config(fleet_path),
-                resources=load_fleet_storage(fleet_path),
-            )
+            return load_fleet(directory)
 
     def test_parser_model_and_rendering_share_one_named_resource(self):
         fleet = self.load()

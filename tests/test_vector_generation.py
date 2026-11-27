@@ -8,26 +8,14 @@ from pathlib import Path
 from typing import override
 
 from quadletgen.compiler import compile_fleet
-from quadletgen.model import Fleet
-from quadletgen.parser import (
-    load_fleet_config,
-    load_fleet_egress,
-    load_fleet_storage,
-    load_service,
-)
+from quadletgen.parser import load_fleet
 from tests.quadlet_test_support import REPO
 
 
 class VectorGenerationTests(unittest.TestCase):
     @override
     def setUp(self):
-        fleet_file = REPO / "quadlets/_fleet.toml"
-        self.fleet = Fleet.build(
-            [load_service(path) for path in sorted((REPO / "quadlets").glob("[!_]*.toml"))],
-            groups=load_fleet_config(fleet_file),
-            resources=load_fleet_storage(fleet_file),
-            egress=load_fleet_egress(fleet_file),
-        )
+        self.fleet = load_fleet(REPO / "quadlets")
         self.artifacts = {
             artifact.path: artifact.content
             for artifact in compile_fleet(self.fleet)

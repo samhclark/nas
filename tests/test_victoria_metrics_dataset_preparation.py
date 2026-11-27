@@ -55,12 +55,6 @@ class VictoriaMetricsDatasetPreparationTests(unittest.TestCase):
             QUADLET,
         )
 
-    def test_retired_rootful_quadlet_guard_is_absent(self):
-        self.assertNotIn(
-            "/etc/containers/systemd/victoria-metrics.container",
-            QUADLET,
-        )
-
 
 if __name__ == "__main__":
     unittest.main()

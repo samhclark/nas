@@ -10,9 +10,9 @@ from pathlib import Path
 
 from quadletgen.compiler import compile_fleet
 from quadletgen.model import ConfigError, Fleet
-from quadletgen.parser import load_fleet_egress, load_service
+from quadletgen.parser import parse_fleet_egress, load_service
 from quadletgen.secrets import verify_sops
-from tests.quadlet_test_support import REPO, current_fleet, service_toml
+from tests.quadlet_test_support import REPO, current_fleet, service_toml, parse_fleet_fixture
 
 
 MULLVAD = """\
@@ -95,7 +95,7 @@ class MullvadEgressTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory(dir=REPO) as directory_name:
             path = self.write_fleet(Path(directory_name))
-            parsed = load_fleet_egress(path)
+            parsed = parse_fleet_fixture(path, parse_fleet_egress)
         self.assertEqual(parsed, egress)
 
         verify_sops(
@@ -225,7 +225,7 @@ class MullvadEgressTests(unittest.TestCase):
             )
             fleet = Fleet.build(
                 [load_service(selected_path), load_service(peer_path)],
-                egress=load_fleet_egress(self.write_fleet(directory)),
+                egress=parse_fleet_fixture(self.write_fleet(directory), parse_fleet_egress),
             )
             artifacts = {
                 artifact.path: artifact.content
@@ -284,7 +284,7 @@ class MullvadEgressTests(unittest.TestCase):
             )
             fleet = Fleet.build(
                 [load_service(selected_path), load_service(peer_path)],
-                egress=load_fleet_egress(self.write_fleet(directory)),
+                egress=parse_fleet_fixture(self.write_fleet(directory), parse_fleet_egress),
             )
             artifacts = {
                 artifact.path: artifact.content
@@ -418,7 +418,7 @@ class MullvadEgressTests(unittest.TestCase):
             )
             fleet = Fleet.build(
                 [load_service(selected_path), load_service(ordinary_path)],
-                egress=load_fleet_egress(self.write_fleet(directory)),
+                egress=parse_fleet_fixture(self.write_fleet(directory), parse_fleet_egress),
             )
             artifacts = {
                 artifact.path: artifact.content
@@ -516,7 +516,7 @@ class MullvadEgressTests(unittest.TestCase):
             selected_path.write_text(self.tap_service())
             fleet = Fleet.build(
                 [load_service(selected_path)],
-                egress=load_fleet_egress(self.write_fleet(directory, alternate)),
+                egress=parse_fleet_fixture(self.write_fleet(directory, alternate), parse_fleet_egress),
             )
             artifacts = {
                 artifact.path: artifact.content
@@ -542,7 +542,7 @@ class MullvadEgressTests(unittest.TestCase):
             service = load_service(path)
             fleet = Fleet.build(
                 [service],
-                egress=load_fleet_egress(self.write_fleet(directory)),
+                egress=parse_fleet_fixture(self.write_fleet(directory), parse_fleet_egress),
             )
             selected = compile_fleet(fleet)[0].content
             self.assertIn("/run/nas-egress/mullvad/ready 60 1", selected)
@@ -620,7 +620,7 @@ class MullvadEgressTests(unittest.TestCase):
             service = load_service(service_path)
             fleet = Fleet.build(
                 [service],
-                egress=load_fleet_egress(self.write_fleet(directory)),
+                egress=parse_fleet_fixture(self.write_fleet(directory), parse_fleet_egress),
             )
             sops_path = directory / "secrets.sops.yaml"
             sops_path.write_text("other-secret: ENC[test]\n")
@@ -683,7 +683,7 @@ class MullvadEgressTests(unittest.TestCase):
                 with tempfile.TemporaryDirectory(dir=REPO) as directory_name:
                     path = self.write_fleet(Path(directory_name), source)
                     with self.assertRaises(ConfigError):
-                        load_fleet_egress(path)
+                        parse_fleet_fixture(path, parse_fleet_egress)
 
 
 if __name__ == "__main__":

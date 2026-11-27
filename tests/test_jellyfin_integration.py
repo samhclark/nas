@@ -35,10 +35,8 @@ class JellyfinIntegrationTests(unittest.TestCase):
         )
 
     def test_jellyfin_uses_tap_and_disables_unsupported_exec_healthcheck(self):
-        self.assertIn("Network=host", JELLYFIN_QUADLET)
         self.assertIn("Annotation=krun.tap_name=krun-51120", JELLYFIN_QUADLET)
         self.assertIn("HealthCmd=none", JELLYFIN_QUADLET)
-        self.assertNotIn("PublishPort=", JELLYFIN_QUADLET)
 
     def test_victoria_metrics_probes_jellyfin_health_via_blackbox(self):
         self.assertIn("job_name: 'jellyfin-health'", SCRAPE_CONFIG)

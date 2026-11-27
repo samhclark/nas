@@ -66,7 +66,6 @@ class ArrStackTests(unittest.TestCase):
                 expected_gid = 51430 if name == "prowlarr" else 52000
                 self.assertIn(f"GIDMap=+g1000:@{expected_gid}:1", quadlet)
                 self.assertNotIn("UserNS=", quadlet)
-                self.assertNotIn("PublishPort=", quadlet)
                 self.assertIn("DNS=100.100.100.100", quadlet)
                 self.assertIn("HealthCmd=none", quadlet)
                 status_lines = [

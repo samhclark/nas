@@ -8,8 +8,8 @@ from pathlib import Path
 
 from quadletgen.compiler import compile_fleet
 from quadletgen.model import ConfigError, Fleet
-from quadletgen.parser import load_host_secret_consumers
-from tests.quadlet_test_support import OVERLAY, REPO, current_fleet
+from quadletgen.parser import parse_host_secret_consumers
+from tests.quadlet_test_support import OVERLAY, REPO, current_fleet, parse_fleet_fixture
 
 
 BACKUP_SECRET_NAMES = (
@@ -49,7 +49,7 @@ class ImmichBackupSystemIntegrationTests(unittest.TestCase):
                 'name = "backup"\n'
                 "secrets = []\n"
             )
-            consumers = load_host_secret_consumers(fleet_file)
+            consumers = parse_fleet_fixture(fleet_file, parse_host_secret_consumers)
             with self.assertRaisesRegex(ConfigError, "at least one secret"):
                 Fleet.build(
                     current_fleet().services,
@@ -63,7 +63,7 @@ class ImmichBackupSystemIntegrationTests(unittest.TestCase):
                 'owner = "someone"\n'
             )
             with self.assertRaisesRegex(ConfigError, "unknown keys: owner"):
-                load_host_secret_consumers(fleet_file)
+                parse_fleet_fixture(fleet_file, parse_host_secret_consumers)
 
     def test_daily_and_weekly_timers_use_fixed_chicago_wall_clock(self):
         daily = (
