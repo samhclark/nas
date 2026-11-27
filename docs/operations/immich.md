@@ -64,54 +64,9 @@ The accepted recovery objective, reviewed local and B2 restore sequence, and
 isolated-rehearsal evidence are recorded in
 [`immich-restore.md`](immich-restore.md).
 
-Backup control-plane provisioning completed on 2026-08-30: the private B2
-bucket, `immich/restic/` lifecycle rule, prefix-scoped application key, all five
-real SOPS values, and external escrow of the restic encryption password are in
-place. The image was deployed and the local restic repository was explicitly
-initialized and structurally checked successfully. Its first mirror stopped
-before contacting B2 when crun could not start the former passt backend. The
-dedicated root-owned TAP correction established guest routing, and the
-subsequent explicit MagicDNS override successfully carried a signed request to
-B2. That request exposed one remaining prefix-boundary defect:
-rclone treated the destination without a trailing slash as the parent object
-`immich/restic`, outside the key's intentional `immich/restic/` restriction.
-After the directory-shaped correction was deployed, the sync guest wrote the
-complete 604-byte empty repository to B2. The immediately following comparison
-guest then exited with rclone's temporary-error status before acquiring the TAP
-network. The runner now keeps sync and its acceptance comparison sequentially
-inside one rclone guest, avoiding a second pass through libkrun's single-shot
-100 ms DHCP window. Production validation of that correction completed the
-remote comparison itself: rclone found zero differences and two matching
-repository objects (`config` and the repository key) beneath
-`immich/restic/`. The host runner did not return successfully or record its
-remote-success timestamp, so the repository is initialized but that command's
-acceptance remains incomplete; `init` must not be used again once snapshots
-exist. The first backup attempt then exposed that the capability-free restic
-guest could
-not traverse the private `0750`, UID/GID `51130` snapshot root. The photo-reading
-no-network guest now receives only `CAP_DAC_READ_SEARCH`; repository-only
-restic guests and the rclone guest remain capability-free. Production then
-confirmed snapshot traversal but exposed a separate virtiofs boundary:
-restic's `--one-file-system` saved only the `/source` directory and zero of the
-measured 40,323,811,505 source bytes. That structurally valid but unusable
-snapshot was mirrored, with five matching B2 objects, while the runner again
-failed to record remote success. The latter failure came from both parsing a
-mixed plain-text/JSON rclone log as pure JSON and reading it before the
-asynchronous `tee` process had necessarily completed, not from libkrun's
-nonfatal read-only resolver warning. Rclone logging is now a synchronized
-pipeline that preserves the VM and logger statuses and safely ignores
-non-JSON lines while extracting metrics. The device filter is removed because
-the nonrecursive ZFS snapshot itself defines the exclusion boundary. A new
-post-backup content check selects the exact `nas`/`/source`/`immich` snapshot,
-requires at least one file and 99% of the regular-file bytes measured
-immediately before the snapshot, and forgets a rejected snapshot before
-failing. Measurement explicitly prunes ZFS's visible `.zfs` namespace. Once a
-valid latest recovery point exists, the same repository query also removes
-historical zero-content snapshots, including the unusable recovery point from
-this incident, before verification and mirroring. Weekly maintenance applies
-the same latest-snapshot gate and cleanup before pruning or replication. The
-first actual Immich recovery point and the direct-B2 restore rehearsal remain
-pending.
+The backup and direct-B2 restore were validated in the 2026-11-21 laptop
+rehearsal. The separately escrowed read-only B2 credential still needs an
+end-to-end test; see the recovery runbook for evidence and remaining limits.
 
 The backup storage-preparation unit also verifies that `/sys/fs/bpf` is mounted
 as bpffs and recreates `/sys/fs/bpf/crun` before the backup or weekly maintenance
