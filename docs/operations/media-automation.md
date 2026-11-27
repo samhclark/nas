@@ -159,8 +159,9 @@ Each automation service has its own managed config dataset.
 `tank/sabnzbd/config`, and `tank/bazarr/config`. These datasets store
 application state separately from the media payload.
 
-On a fresh host the operator prepares the required roots on the mounted
-dataset with owner `root:media`, mode `2775`, and label
+On a fresh host the operator prepares the dataset mountpoint and every
+intermediate and leaf directory in the [fleet resource](../../quadlets/_fleet.toml)
+with owner `root:media`, mode `2775`, and label
 `container_file_t:s0`. The shared-storage unit verifies these roots on boot.
 The original migration from `movies` and `tv-shows` is recorded at Git
 revision `fc0eeb9` in this runbook and its companion scripts.
