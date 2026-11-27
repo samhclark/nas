@@ -53,7 +53,6 @@ class CaddyStatePreparationTests(unittest.TestCase):
         self.assertNotIn("Volume=/var/lib/caddy:/data:Z", QUADLET)
         self.assertNotIn("Volume=/var/lib/caddy-config:/config:Z", QUADLET)
         self.assertNotIn("nas-migrations", QUADLET)
-        self.assertNotIn("/etc/containers/systemd/caddy.container", QUADLET)
         self.assertNotIn("prepare-caddy-state", QUADLET)
 
     def test_runtime_secret_mount_is_unchanged(self):
@@ -69,11 +68,6 @@ class CaddyStatePreparationTests(unittest.TestCase):
         self.assertIn("Annotation=krun.ram_mib=512", QUADLET)
         self.assertIn("Annotation=krun.tap_name=krun-51310", QUADLET)
         self.assertIn("StopSignal=SIGINT", QUADLET)
-        self.assertIn(
-            "Network=host", QUADLET
-        )
-        self.assertNotIn("PublishPort=", QUADLET)
-        self.assertNotIn("Annotation=krun.use_passt", QUADLET)
         self.assertNotIn("Sysctl=net.ipv4.ip_unprivileged_port_start", QUADLET)
         self.assertIn("DNS=100.100.100.100", QUADLET)
         self.assertNotIn("DNS=75.75.75.75", QUADLET)

@@ -20,10 +20,14 @@ SPEC.loader.exec_module(SMOKE)
 
 
 class ArrSmokeUnitTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.fleet = SMOKE.load_fleet(SMOKE.FLEET_PATH.parent)
+
     def test_authored_services_and_assets_are_loaded(self):
         for name in SMOKE.SERVICE_NAMES:
             with self.subTest(service=name):
-                spec = SMOKE.service(name)
+                spec = self.fleet.services_by_name[name]
                 self.assertRegex(spec.container.image, r"@sha256:[0-9a-f]{64}$")
                 self.assertIsNotNone(spec.assets)
                 self.assertIsNotNone(spec.container.entrypoint)
@@ -41,11 +45,8 @@ class ArrSmokeUnitTests(unittest.TestCase):
     def test_container_arguments_use_authored_adapter_and_disposable_mounts(self):
         with tempfile.TemporaryDirectory(dir="/var/tmp") as root:
             temporary = Path(root)
-            resources = {
-                resource.name: resource
-                for resource in SMOKE.load_fleet_storage(SMOKE.FLEET_PATH)
-            }
-            spec = SMOKE.service("sonarr")
+            resources = self.fleet.resources_by_name
+            spec = self.fleet.services_by_name["sonarr"]
             arguments = SMOKE.container_arguments(
                 spec,
                 SMOKE.PODMAN_MODE,
@@ -78,13 +79,10 @@ class ArrSmokeUnitTests(unittest.TestCase):
     def test_each_authored_service_mounts_its_image_controlled_adapter(self):
         with tempfile.TemporaryDirectory(dir="/var/tmp") as root:
             temporary = Path(root)
-            resources = {
-                resource.name: resource
-                for resource in SMOKE.load_fleet_storage(SMOKE.FLEET_PATH)
-            }
+            resources = self.fleet.resources_by_name
             for service_name in SMOKE.SERVICE_NAMES:
                 with self.subTest(service=service_name):
-                    spec = SMOKE.service(service_name)
+                    spec = self.fleet.services_by_name[service_name]
                     arguments = SMOKE.container_arguments(
                         spec,
                         SMOKE.PODMAN_MODE,
@@ -111,12 +109,9 @@ class ArrSmokeUnitTests(unittest.TestCase):
     def test_krun_command_selects_runtime_without_exec(self):
         with tempfile.TemporaryDirectory(dir="/var/tmp") as root:
             temporary = Path(root)
-            resources = {
-                resource.name: resource
-                for resource in SMOKE.load_fleet_storage(SMOKE.FLEET_PATH)
-            }
+            resources = self.fleet.resources_by_name
             arguments = SMOKE.container_arguments(
-                SMOKE.service("sabnzbd"),
+                self.fleet.services_by_name["sabnzbd"],
                 SMOKE.KRUN_MODE,
                 "arr-smoke-sabnzbd-test",
                 temporary,
@@ -131,14 +126,11 @@ class ArrSmokeUnitTests(unittest.TestCase):
     def test_both_runtime_modes_request_each_service_mapped_identity(self):
         with tempfile.TemporaryDirectory(dir="/var/tmp") as root:
             temporary = Path(root)
-            resources = {
-                resource.name: resource
-                for resource in SMOKE.load_fleet_storage(SMOKE.FLEET_PATH)
-            }
+            resources = self.fleet.resources_by_name
             for mode in (SMOKE.PODMAN_MODE, SMOKE.KRUN_MODE):
                 for service_name in SMOKE.SERVICE_NAMES:
                     with self.subTest(mode=mode.name, service=service_name):
-                        spec = SMOKE.service(service_name)
+                        spec = self.fleet.services_by_name[service_name]
                         mapped_id = spec.identity.mapped_container_id
                         self.assertIsNotNone(mapped_id)
                         arguments = SMOKE.container_arguments(
@@ -177,10 +169,7 @@ class ArrSmokeUnitTests(unittest.TestCase):
         logs = mock.Mock(returncode=0, stdout="application failed", stderr="")
         cleanup = mock.Mock(returncode=125, stdout="", stderr="still running")
         with tempfile.TemporaryDirectory(dir="/var/tmp") as root:
-            resources = {
-                resource.name: resource
-                for resource in SMOKE.load_fleet_storage(SMOKE.FLEET_PATH)
-            }
+            resources = self.fleet.resources_by_name
             with (
                 mock.patch.object(SMOKE, "container_arguments", return_value=["run"]),
                 mock.patch.object(
@@ -191,7 +180,7 @@ class ArrSmokeUnitTests(unittest.TestCase):
             ):
                 with self.assertRaisesRegex(RuntimeError, "podman run failed") as raised:
                     SMOKE.smoke_service(
-                        SMOKE.service("sonarr"),
+                        self.fleet.services_by_name["sonarr"],
                         SMOKE.PODMAN_MODE,
                         Path(root),
                         resources,

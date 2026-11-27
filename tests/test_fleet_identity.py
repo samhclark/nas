@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from quadletgen.compiler import compile_fleet
 from quadletgen.model import ConfigError, Fleet, FleetGroup
-from quadletgen.parser import load_fleet_config, load_service
-from tests.quadlet_test_support import REPO, service_toml
+from quadletgen.parser import load_fleet, load_service, parse_fleet_groups
+from tests.quadlet_test_support import REPO, parse_fleet_fixture, service_toml
 
 
 class FleetIdentityTests(unittest.TestCase):
@@ -21,7 +22,7 @@ class FleetIdentityTests(unittest.TestCase):
     def write_groups(self, directory: Path, source: str):
         path = directory / "_fleet.toml"
         path.write_text(source)
-        return load_fleet_config(path)
+        return parse_fleet_fixture(path, parse_fleet_groups)
 
     def valid_service(self, *, identity: str = "") -> str:
         return service_toml(
@@ -40,12 +41,34 @@ class FleetIdentityTests(unittest.TestCase):
             extra=identity,
         )
 
+    def test_fleet_loader_reads_config_once_and_handles_missing_config(self):
+        with tempfile.TemporaryDirectory(dir=REPO) as directory_name:
+            directory = Path(directory_name)
+            (directory / "service.toml").write_text(self.valid_service())
+            self.assertEqual(load_fleet(directory).groups, ())
+            fleet_path = directory / "_fleet.toml"
+            fleet_path.write_text('[[groups]]\nname = "media"\ngid = 52000\n')
+            original_open = Path.open
+            opened = []
+
+            def tracking_open(path, *args, **kwargs):
+                opened.append(path)
+                return original_open(path, *args, **kwargs)
+
+            with mock.patch.object(Path, "open", tracking_open):
+                fleet = load_fleet(directory)
+            self.assertEqual(opened.count(fleet_path), 1)
+            self.assertEqual(fleet.groups[0].name, "media")
+            fleet_path.write_text('unknown = true\n')
+            with self.assertRaisesRegex(ConfigError, "unknown keys: unknown"):
+                load_fleet(directory)
+
     def test_parser_reads_empty_and_declared_fleet_groups(self):
         with tempfile.TemporaryDirectory(dir=REPO) as directory_name:
             directory = Path(directory_name)
             empty = directory / "_fleet-empty.toml"
             empty.write_text("# no groups yet\n")
-            self.assertEqual(load_fleet_config(empty), ())
+            self.assertEqual(parse_fleet_fixture(empty, parse_fleet_groups), ())
 
             groups = self.write_groups(
                 directory,

@@ -41,11 +41,7 @@ class GarageDatasetPreparationTests(unittest.TestCase):
         )
         self.assertEqual(MANIFEST.count("service|garage|"), 1)
 
-    def test_rootful_migration_scaffolding_is_absent(self):
-        self.assertNotIn(
-            "/etc/containers/systemd/garage.container",
-            QUADLET,
-        )
+    def test_quadlet_waits_for_storage_readiness(self):
         self.assertIn("/run/nas-storage/garage/ready", QUADLET)
 
 

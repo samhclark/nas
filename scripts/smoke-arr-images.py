@@ -36,7 +36,7 @@ import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Sequence
+from typing import Mapping, Sequence
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
@@ -44,8 +44,7 @@ sys.path.insert(0, str(REPO))
 from quadletgen.model import Service  # noqa: E402
 from quadletgen.storage_model import FleetZfsStorage  # noqa: E402
 from quadletgen.parser import (  # noqa: E402
-    load_fleet_storage,
-    load_service,
+    load_fleet,
 )
 
 
@@ -84,11 +83,6 @@ def run(
         timeout=timeout,
     )
 
-
-def service(name: str) -> Service:
-    if name not in SERVICE_NAMES:
-        raise ValueError(f"unknown smoke service: {name}")
-    return load_service(REPO / "quadlets" / f"{name}.toml")
 
 
 def runtime_probe_arguments(mode: RuntimeMode) -> list[str]:
@@ -153,7 +147,7 @@ def _access_suffix(access: object) -> str:
 def _storage_mounts(
     spec: Service,
     temporary: Path,
-    resources: dict[str, FleetZfsStorage],
+    resources: Mapping[str, FleetZfsStorage],
 ) -> list[str]:
     mounts: list[str] = []
     for storage in spec.storage:
@@ -202,7 +196,7 @@ def container_arguments(
     mode: RuntimeMode,
     name: str,
     temporary: Path,
-    resources: dict[str, FleetZfsStorage],
+    resources: Mapping[str, FleetZfsStorage],
 ) -> list[str]:
     """Build a safe, detached command without launching it."""
 
@@ -398,7 +392,7 @@ def smoke_service(
     spec: Service,
     mode: RuntimeMode,
     temporary: Path,
-    resources: dict[str, FleetZfsStorage],
+    resources: Mapping[str, FleetZfsStorage],
     *,
     startup_timeout_seconds: int,
     observation_seconds: int,
@@ -504,10 +498,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     else:
         print("skip krun: Podman cannot select the krun runtime", flush=True)
 
-    resources: dict[str, FleetZfsStorage] = {
-        resource.name: resource
-        for resource in load_fleet_storage(FLEET_PATH)
-    }
+    fleet = load_fleet(FLEET_PATH.parent)
+    resources = fleet.resources_by_name
     print(
         "limitation: local smoke uses rootless keep-id ownership with the "
         "declared mapped process identity in both ordinary Podman and "
@@ -525,7 +517,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         for mode in modes:
             for service_name in SERVICE_NAMES:
                 smoke_service(
-                    service(service_name),
+                    fleet.services_by_name[service_name],
                     mode,
                     temporary,
                     resources,

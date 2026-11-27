@@ -15,6 +15,7 @@ from .model import (
     Dependency,
     DependencyCondition,
     Endpoint,
+    Fleet,
     FleetGroup,
     HostSecretConsumer,
     HostVmTap,
@@ -618,9 +619,7 @@ def _load_fleet_tables(toml_path: Path) -> dict[str, object]:
     )
 
 
-def load_host_vm_taps(toml_path: Path) -> tuple[HostVmTap, ...]:
-    name = toml_path.name
-    top = _load_fleet_tables(toml_path)
+def parse_host_vm_taps(top: Mapping[str, object], name: str) -> tuple[HostVmTap, ...]:
     raw = top.get("host-vm-taps", [])
     path = f"{name}: [[host-vm-taps]]"
     if not isinstance(raw, list):
@@ -663,11 +662,9 @@ def load_host_vm_taps(toml_path: Path) -> tuple[HostVmTap, ...]:
     return tuple(result)
 
 
-def load_host_secret_consumers(
-    toml_path: Path,
+def parse_host_secret_consumers(
+    top: Mapping[str, object], name: str,
 ) -> tuple[HostSecretConsumer, ...]:
-    name = toml_path.name
-    top = _load_fleet_tables(toml_path)
     raw = top.get("host-secret-consumers", [])
     path = f"{name}: [[host-secret-consumers]]"
     if not isinstance(raw, list):
@@ -691,9 +688,7 @@ def load_host_secret_consumers(
     return tuple(result)
 
 
-def load_fleet_config(toml_path: Path) -> tuple[FleetGroup, ...]:
-    name = toml_path.name
-    top = _load_fleet_tables(toml_path)
+def parse_fleet_groups(top: Mapping[str, object], name: str) -> tuple[FleetGroup, ...]:
     groups = top.get("groups", [])
     if not isinstance(groups, list):
         _fail(f"{name}: [[groups]]", "must be an array of tables")
@@ -716,12 +711,6 @@ def load_fleet_config(toml_path: Path) -> tuple[FleetGroup, ...]:
         if result[-1].gid < 1:
             _fail(f"{path}.gid", "must be at least 1")
     return tuple(result)
-
-
-def load_fleet_storage(toml_path: Path):
-    name = toml_path.name
-    top = _load_fleet_tables(toml_path)
-    return parse_fleet_storage(top.get("resources"), name)
 
 
 def _parse_mullvad_endpoint(
@@ -815,9 +804,7 @@ def _parse_mullvad_egress(raw: object, name: str) -> MullvadEgress | None:
     )
 
 
-def load_fleet_egress(toml_path: Path) -> MullvadEgress | None:
-    top = _load_fleet_tables(toml_path)
-    name = toml_path.name
+def parse_fleet_egress(top: Mapping[str, object], name: str) -> MullvadEgress | None:
     raw = top.get("egress")
     if raw is None:
         return None
@@ -825,6 +812,24 @@ def load_fleet_egress(toml_path: Path) -> MullvadEgress | None:
     return _parse_mullvad_egress(
         _required(table, "mullvad", f"{name}: [egress]"),
         name,
+    )
+
+
+def load_fleet(quadlet_dir: Path) -> Fleet:
+    """Load and validate a fleet, reading the optional fleet file once."""
+    paths = sorted(quadlet_dir.glob("[!_]*.toml"))
+    if not paths:
+        raise ConfigError(f"no TOML configs found in {quadlet_dir}")
+    fleet_path = quadlet_dir / "_fleet.toml"
+    top = _load_fleet_tables(fleet_path) if fleet_path.exists() else {}
+    name = fleet_path.name
+    return Fleet.build(
+        [load_service(path) for path in paths],
+        groups=parse_fleet_groups(top, name),
+        resources=parse_fleet_storage(top.get("resources"), name),
+        egress=parse_fleet_egress(top, name),
+        host_secret_consumers=parse_host_secret_consumers(top, name),
+        host_vm_taps=parse_host_vm_taps(top, name),
     )
 
 

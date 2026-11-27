@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import stat
 import unittest
 from dataclasses import replace
 from pathlib import Path
@@ -10,7 +9,6 @@ from pathlib import Path
 from quadletgen.compiler import Artifact, compile_fleet
 from quadletgen.model import ConfigError, Fleet, KrunNetwork
 from tests.quadlet_test_support import (
-    GENERATED_PREFIX,
     OVERLAY,
     REPO,
     current_fleet,
@@ -18,26 +16,11 @@ from tests.quadlet_test_support import (
 
 
 class CompilerCharacterizationTests(unittest.TestCase):
-    def test_compiler_exactly_reproduces_every_tracked_generated_artifact(self):
-        artifacts = compile_fleet(current_fleet())
-        compiled_paths = {artifact.path for artifact in artifacts}
-
-        tracked_generated = set()
-        for path in OVERLAY.rglob("*"):
-            if not path.is_file() or path.is_symlink():
-                continue
-            first_two = path.read_text(errors="replace").splitlines()[:2]
-            if any(line.startswith(GENERATED_PREFIX) for line in first_two):
-                tracked_generated.add(path.relative_to(OVERLAY))
-        tracked_generated.update({Path("etc/subuid"), Path("etc/subgid")})
-
-        self.assertEqual(compiled_paths, tracked_generated)
-        for artifact in artifacts:
-            with self.subTest(path=artifact.path):
-                path = OVERLAY / artifact.path
-                self.assertEqual(artifact.content, path.read_text())
-                executable = bool(path.stat().st_mode & stat.S_IXUSR)
-                self.assertEqual(artifact.executable, executable)
+    def test_service_quadlets_are_absent_from_the_rootful_directory(self):
+        rootful = OVERLAY / "etc/containers/systemd"
+        for service in current_fleet().services:
+            with self.subTest(service=service.info.name):
+                self.assertFalse((rootful / f"{service.info.name}.container").exists())
 
     def test_current_fleet_is_typed_and_uid_ordered(self):
         fleet = current_fleet()

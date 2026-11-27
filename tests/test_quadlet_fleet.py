@@ -14,8 +14,8 @@ from quadletgen.model import (
     Fleet,
     HostVmTap,
 )
-from quadletgen.parser import load_host_vm_taps, load_service
-from tests.quadlet_test_support import REPO, current_fleet, service_toml
+from quadletgen.parser import parse_host_vm_taps, load_service
+from tests.quadlet_test_support import REPO, current_fleet, service_toml, parse_fleet_fixture
 
 
 class FleetValidationTests(unittest.TestCase):
@@ -99,7 +99,7 @@ ipv4 = "10.253.19.2/30"
 managed-units = ["nas-backup-immich.service"]
 '''
             )
-            taps = load_host_vm_taps(fleet_path)
+            taps = parse_fleet_fixture(fleet_path, parse_host_vm_taps)
             self.assertEqual(taps[0].tap_name, "krun-backup")
             self.assertEqual(str(taps[0].tap_gateway), "10.253.19.1/30")
 

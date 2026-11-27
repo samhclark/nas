@@ -8,15 +8,8 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from .compiler import compile_fleet
-from .model import ConfigError, Fleet
-from .parser import (
-    load_fleet_config,
-    load_fleet_egress,
-    load_fleet_storage,
-    load_host_secret_consumers,
-    load_host_vm_taps,
-    load_service,
-)
+from .model import ConfigError
+from .parser import load_fleet
 from .secrets import verify_sops
 from .sync import check_artifacts, sync_artifacts
 
@@ -24,40 +17,7 @@ from .sync import check_artifacts, sync_artifacts
 def run(repo: Path, *, check: bool = False) -> int:
     quadlet_dir = repo / "quadlets"
     overlay = repo / "overlay-root"
-    fleet_config_path = quadlet_dir / "_fleet.toml"
-    toml_paths = sorted(quadlet_dir.glob("[!_]*.toml"))
-    if not toml_paths:
-        raise ConfigError(f"no TOML configs found in {quadlet_dir}")
-    groups = (
-        load_fleet_config(fleet_config_path)
-        if fleet_config_path.exists()
-        else ()
-    )
-    resources = (
-        load_fleet_storage(fleet_config_path)
-        if fleet_config_path.exists()
-        else ()
-    )
-    fleet = Fleet.build(
-        [load_service(path) for path in toml_paths],
-        groups=groups,
-        resources=resources,
-        egress=(
-            load_fleet_egress(fleet_config_path)
-            if fleet_config_path.exists()
-            else None
-        ),
-        host_secret_consumers=(
-            load_host_secret_consumers(fleet_config_path)
-            if fleet_config_path.exists()
-            else ()
-        ),
-        host_vm_taps=(
-            load_host_vm_taps(fleet_config_path)
-            if fleet_config_path.exists()
-            else ()
-        ),
-    )
+    fleet = load_fleet(quadlet_dir)
     verify_sops(
         fleet,
         overlay / "usr/share/nas/secrets/secrets.sops.yaml",
