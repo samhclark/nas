@@ -62,6 +62,7 @@ class KrunTapNetworkTests(unittest.TestCase):
             "*/*.container"
         ):
             unit = path.read_text()
+            self.assertIn("PodmanArgs=--runtime=krun\n", unit)
             self.assertIn("Annotation=krun.tap_name=", unit)
             self.assertIn("Network=host", unit)
             self.assertIn("AddDevice=/dev/net/tun", unit)
