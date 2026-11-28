@@ -17,7 +17,6 @@ from urllib.parse import urlsplit
 from .errors import ConfigError
 from .storage_model import (
     DirectoryStorage,
-    ExistingZfsStorage,
     FleetStorageSpec,
     FleetZfsStorage,
     ManagedZfsStorage,
@@ -1013,10 +1012,7 @@ def _validate_service(service: Service) -> None:
         if not isinstance(value, expected_type):
             _fail(f"service.{field_name}", f"must be {expected_type.__name__}")
     if not isinstance(service.storage, tuple) or any(
-        not isinstance(
-            storage,
-            (DirectoryStorage, ManagedZfsStorage, ExistingZfsStorage),
-        )
+        not isinstance(storage, (DirectoryStorage, ManagedZfsStorage))
         for storage in service.storage
     ):
         _fail("service.storage", "must contain only supported storage contracts")
@@ -1043,12 +1039,6 @@ def _validate_service(service: Service) -> None:
                 _fail(
                     f"{service.source.name}: storage[{storage.name}].dataset",
                     f"managed datasets must be below {expected_prefix}",
-                )
-        elif isinstance(storage, ExistingZfsStorage):
-            if storage.dataset != "tank/videos":
-                _fail(
-                    f"{service.source.name}: storage[{storage.name}].dataset",
-                    "the only allowed shared existing dataset is tank/videos",
                 )
         for export in storage.exports:
             if export.container_path in container_paths:
@@ -1199,10 +1189,7 @@ def _validate_fleet(fleet: Fleet) -> None:
                 (
                     "ZFS dataset",
                     storage.dataset
-                    if isinstance(
-                        storage,
-                        (ManagedZfsStorage, ExistingZfsStorage),
-                    )
+                    if isinstance(storage, ManagedZfsStorage)
                     else None,
                 ),
             ):

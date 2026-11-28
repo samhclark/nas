@@ -10,7 +10,6 @@ from .headers import generated_header
 from .model import Fleet, SUBID_COUNT, Protocol, Service
 from .storage_model import (
     DirectoryStorage,
-    ExistingZfsStorage,
     FleetZfsStorage,
     ManagedZfsStorage,
     StorageAccess,
@@ -67,13 +66,12 @@ def storage_readiness_line(service: Service) -> str | None:
                 continue
             seen_paths.add(path)
             requirements += ["--path", path]
-            if isinstance(storage, (ManagedZfsStorage, ExistingZfsStorage)):
+            if isinstance(storage, ManagedZfsStorage):
                 requirements += ["--source", storage.dataset]
-            if isinstance(storage, (DirectoryStorage, ManagedZfsStorage)):
-                requirements += [
-                    "--owner",
-                    f"{service.host.uid}:{service.host.uid}",
-                ]
+            requirements += [
+                "--owner",
+                f"{service.host.uid}:{service.host.uid}",
+            ]
             access = (
                 "rx"
                 if export.access is StorageAccess.READ_ONLY
@@ -194,7 +192,7 @@ def storage_manifest(service: Service, fleet: Fleet | None = None) -> str:
                     f"{posixpath.join(storage.host_path, subdirectory)}|"
                     f"{storage.mode}"
                 )
-        elif isinstance(storage, ManagedZfsStorage):
+        else:
             parts = storage.dataset.split("/")
             for depth in range(2, len(parts)):
                 parent = "/".join(parts[:depth])
@@ -214,10 +212,6 @@ def storage_manifest(service: Service, fleet: Fleet | None = None) -> str:
                 f"{storage.mode}|{properties}"
             )
             emitted_datasets.add(storage.dataset)
-        else:
-            lines.append(
-                f"existing-zfs|{storage.dataset}|{storage.host_path}"
-            )
     return "\n".join(lines) + "\n"
 
 
@@ -227,10 +221,7 @@ def storage_unit(service: Service) -> str:
     if not service.storage:
         raise ValueError(f"{service.info.name} has no storage to render")
     account_unit = f"ensure-nas-{service.host.slug}-account.service"
-    has_zfs = any(
-        isinstance(item, (ManagedZfsStorage, ExistingZfsStorage))
-        for item in service.storage
-    )
+    has_zfs = any(isinstance(item, ManagedZfsStorage) for item in service.storage)
     requires = [account_unit]
     after = ["local-fs.target", account_unit]
     conditions: list[str] = []

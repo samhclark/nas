@@ -138,27 +138,6 @@ class ManagedZfsStorage:
 
 
 @dataclass(frozen=True, slots=True)
-class ExistingZfsStorage:
-    """A required pre-existing ZFS dataset that remains host-owned."""
-
-    name: str
-    dataset: str
-    host_path: str
-    exports: tuple[StorageExport, ...]
-    kind: Literal["existing-zfs"] = field(default="existing-zfs", init=False)
-
-    def __post_init__(self) -> None:
-        path = _validate_common(self.name, self.host_path, self.exports)
-        _validate_dataset(self.dataset, f"{path}.dataset")
-        for index, export in enumerate(self.exports, start=1):
-            if export.access is not StorageAccess.READ_ONLY:
-                _fail(
-                    f"{path}.exports[{index}].access",
-                    "existing ZFS storage can only be exported read-only",
-                )
-
-
-@dataclass(frozen=True, slots=True)
 class FleetZfsStorage:
     """A required-existing ZFS resource shared by opted-in services.
 
@@ -232,7 +211,7 @@ class SharedStorageExport:
             )
 
 
-StorageSpec: TypeAlias = DirectoryStorage | ManagedZfsStorage | ExistingZfsStorage
+StorageSpec: TypeAlias = DirectoryStorage | ManagedZfsStorage
 FleetStorageSpec: TypeAlias = FleetZfsStorage
 
 

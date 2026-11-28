@@ -10,7 +10,6 @@ from typing import cast
 from quadletgen.model import ConfigError
 from quadletgen.storage_model import (
     DirectoryStorage,
-    ExistingZfsStorage,
     ManagedZfsStorage,
     StorageAccess,
     StorageExport,
@@ -88,9 +87,7 @@ class StorageParserTests(unittest.TestCase):
         self.assertTrue(str(raised.exception).startswith("example.toml:"))
 
     def test_parses_each_discriminated_storage_kind(self):
-        directory, managed, existing = self.parse(
-            DIRECTORY + MANAGED_ZFS + EXISTING_ZFS
-        )
+        directory, managed = self.parse(DIRECTORY + MANAGED_ZFS)
 
         self.assertIsInstance(directory, DirectoryStorage)
         self.assertEqual(directory.kind, "directory")
@@ -103,19 +100,6 @@ class StorageParserTests(unittest.TestCase):
         self.assertEqual(managed.compression, ZfsCompression.LZ4)
         self.assertFalse(managed.atime)
         self.assertEqual(managed.primary_cache, ZfsPrimaryCache.METADATA)
-
-        self.assertIsInstance(existing, ExistingZfsStorage)
-        self.assertEqual(existing.kind, "existing-zfs")
-        self.assertEqual(
-            [export.subpath for export in existing.exports],
-            ["movies", "tv-shows"],
-        )
-        self.assertTrue(
-            all(
-                export.access is StorageAccess.READ_ONLY
-                for export in existing.exports
-            )
-        )
 
     def test_absent_storage_section_is_an_empty_contract(self):
         self.assertEqual(parse_storage(None, "example.toml"), ())
@@ -139,13 +123,6 @@ class StorageParserTests(unittest.TestCase):
                 'primary-cache = "metadata"\ndedup = true',
             ),
             "unknown keys: dedup",
-        )
-        self.assert_invalid(
-            EXISTING_ZFS.replace(
-                'host-path = "/var/zfs/tank/videos"',
-                'host-path = "/var/zfs/tank/videos"\nmode = "0750"',
-            ),
-            "unknown keys: mode",
         )
 
     def test_destructive_lifecycle_controls_are_not_part_of_the_language(self):
@@ -222,10 +199,10 @@ class StorageParserTests(unittest.TestCase):
             "dataset root",
         )
 
-    def test_existing_dataset_is_read_only_by_construction(self):
+    def test_service_storage_rejects_existing_zfs(self):
         self.assert_invalid(
-            EXISTING_ZFS.replace('access = "read-only"', 'access = "read-write"', 1),
-            "only be exported read-only",
+            EXISTING_ZFS,
+            r'\[\[storage\]\]\[1\]\.kind: must be "directory" or "managed-zfs"',
         )
 
     def test_paths_datasets_modes_and_names_are_strict(self):

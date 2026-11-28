@@ -225,38 +225,6 @@ class StorageRuntimeTests(unittest.TestCase):
         self.assertIn("operator migration/repair is required", result.stderr)
         self.assertEqual(self.mutations(), [])
 
-    def test_existing_dataset_is_verified_but_never_created_or_chowned(self):
-        shared_path = self.root / "shared"
-        shared_path.mkdir()
-        child = shared_path / "child"
-        child.touch()
-        manifest, _ = self.manifest(f"existing-zfs|tank/videos|{shared_path}")
-        self.add_dataset("tank/videos", str(shared_path))
-        self.state["paths"][str(shared_path)] = {
-            "label": EXPECTED_LABEL,
-            "mode": "755",
-            "owner": "0:0",
-        }
-        self.state["paths"][str(child)] = {
-            "label": EXPECTED_LABEL,
-            "mode": "644",
-            "owner": "1234:1234",
-        }
-        self.state["samples"][str(shared_path)] = [str(child)]
-        self.state["fcontexts"].append(str(shared_path))
-        self.write_state()
-
-        result = self.run_runtime(manifest)
-
-        self.assertEqual(result.returncode, 0, result.stderr)
-        commands = self.commands()
-        self.assertFalse(
-            any(command[0] == "zfs" and command[1:2] == ["create"] for command in commands)
-        )
-        self.assertFalse(any(command[0] == "chown" for command in commands))
-        self.assertFalse(any(command[0] == "find" and "-exec" in command for command in commands))
-        self.assertFalse(any(command[0] == "restorecon" for command in commands))
-
     def test_managed_datasets_are_created_with_exact_declared_options(self):
         data_path = self.root / "data"
         manifest, _ = self.manifest(
@@ -669,11 +637,11 @@ class StorageRuntimeTests(unittest.TestCase):
     def test_manifest_cannot_escape_service_dataset_policy(self):
         records = (
             f"managed-zfs|tank/other|{self.root / 'managed'}|0750|-",
-            f"existing-zfs|tank/private|{self.root / 'existing'}",
+            f"existing-zfs|tank/videos|{self.root / 'existing'}",
         )
         expected_errors = (
             "managed datasets must be within tank/sample",
-            "only tank/videos may be declared existing-zfs",
+            "unknown record type 'existing-zfs'",
         )
 
         for record, expected_error in zip(records, expected_errors, strict=True):
@@ -736,10 +704,6 @@ class StorageRuntimeTests(unittest.TestCase):
             (
                 f"managed-zfs|tank/sample/data|{self.root / 'data'}|0750|recordsize=8K",
                 "unsupported ZFS properties",
-            ),
-            (
-                "existing-zfs|tank/videos|/srv/videos",
-                "below /var",
             ),
         )
         for record, message in invalid_records:

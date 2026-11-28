@@ -1,7 +1,7 @@
 # Service storage architecture
 
-`quadlets/<service>.toml` is the only authored description of application
-storage. A storage declaration simultaneously defines the host lifecycle, the
+Service TOMLs declare private state and mounts. `quadlets/_fleet.toml`
+declares shared resources. A storage declaration simultaneously defines the host lifecycle, the
 container mount, the boot-time preparation unit, and the rootless service's
 current-boot readiness check. Raw `[[container.volumes]]` sources below `/var`
 are rejected.
@@ -23,10 +23,15 @@ is absent. Record size, compression, atime, primary-cache policy, mountpoint,
 owner, mode, and persistent `container_file_t:s0` labeling are explicit. An
 existing dataset is verified; properties are never changed in place.
 
-`kind = "existing-zfs"` requires the shared `tank/videos` dataset. It is
-read-only by construction. The storage runtime may repair its SELinux labels
-after an explicit request, but it never creates the dataset or changes its
-ownership or modes.
+Every `[[storage.exports]]` names a relative source, an absolute container
+path, and `read-only` or `read-write` access. Generated Quadlets do not use
+Podman `:z` or `:Z` for these trees.
+
+## Shared storage
+
+The fleet declares `tank/videos` as a required-existing ZFS resource in
+`quadlets/_fleet.toml`. Each service selects its subpath, container mount,
+and access mode with `[[shared-storage]]`.
 
 The authored media-automation layout is a TRaSH-style single `/data` tree:
 
@@ -45,32 +50,11 @@ The authored media-automation layout is a TRaSH-style single `/data` tree:
 The fleet resource requires these directories to exist as real directories
 under the `tank/videos` mount, owned by `root:52000`, mode `2775`, and labeled
 `container_file_t:s0`. The `media` group is a stable fleet group with GID
-`52000`. Sonarr, Radarr, SABnzbd, and Jellyfin receive that group; the first
-three receive writable access to the appropriate part of `/data`, while
-Jellyfin receives `/data/media` read-only.
-Prowlarr receives no media mount. The resource preparation unit only verifies
-this existing shared tree; it does not create, move, chown, or relabel it.
-
-The four application configuration datasets are separate managed ZFS state:
-
-| Service | Dataset and host mount | Container path | ZFS policy |
-| --- | --- | --- | --- |
-| Sonarr | `tank/sonarr/config` → `/var/lib/sonarr/config` | `/config` | `recordsize=16K`, `compression=lz4`, `atime=off`, `primarycache=all` |
-| Radarr | `tank/radarr/config` → `/var/lib/radarr/config` | `/config` | same |
-| Prowlarr | `tank/prowlarr/config` → `/var/lib/prowlarr/config` | `/config` | same |
-| SABnzbd | `tank/sabnzbd/config` → `/var/lib/sabnzbd/config` | `/config` | same |
-| Jellyfin | existing `tank/jellyfin/{config,cache}` | `/config`, `/cache` | existing Jellyfin declaration |
-
-The media files themselves are intentionally not backed up. The current
-`tank/videos` snapshot policy has frequent, hourly, daily, and weekly timers
-with retentions of 5, 25, 8, and 5 snapshots respectively. There are no
-monthly or yearly `videos` timers; the five weekly snapshots are the outer
-retention boundary of approximately one month. These snapshots are short-lived
-recovery aids, not a media backup strategy.
-
-Every `[[storage.exports]]` names a relative source, an absolute container
-path, and `read-only` or `read-write` access. Generated Quadlets do not use
-Podman `:z` or `:Z` for these trees.
+`52000`. Jellyfin mounts `/data/media` read-only. Sonarr, Radarr, SABnzbd,
+and Bazarr have writable mounts for their declared subpaths. The shared
+preparation unit verifies the mount and required directories. The operator
+owns creation and repair. The [media runbook](../operations/media-automation.md)
+covers the layout, backup exclusions, snapshot retention, and import checks.
 
 ## Generated enforcement
 
@@ -131,13 +115,3 @@ units declare that status in `RestartPreventExitStatus`, so deterministic
 operator intervention does not become a 30-second retry loop; transient
 failures retain the existing restart policy. Drift logs name the exact sampled
 path and observed ownership, mode, or label before refusing repair.
-
-The current authored stateful services are Caddy, Alertmanager, Grafana,
-Garage, VictoriaMetrics, VictoriaLogs, Jellyfin, all four Immich components,
-and the four media-automation services. VictoriaLogs storage is deployed and
-validated through the initial logging pilot. The media-automation config
-datasets and shared layout are deployed and validated with the four production
-services. `tank/victoria-logs/data` deliberately has no snapshot or backup
-policy.
-Blackbox exporter, vmalert, and Jellyfin exporter are intentionally stateless;
-image assets and runtime secrets are separate declaration classes.
