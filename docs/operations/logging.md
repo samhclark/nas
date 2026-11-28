@@ -15,6 +15,7 @@ logging remain separate projects.
 
 VictoriaLogs stores seven days of searchable history on
 `tank/victoria-logs/data`, with a pool-filesystem usage guard at 80 percent.
+The dataset is intentionally excluded from ZFS snapshots and backups.
 Grafana Explore reaches it through the provisioned, non-default VictoriaLogs
 datasource. The VictoriaLogs web UI and API are now also published through
 Caddy at `https://logs.i.samhclark.com/`, which proxies to the service's
