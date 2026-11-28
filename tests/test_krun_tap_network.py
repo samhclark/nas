@@ -10,7 +10,6 @@ import unittest
 import uuid
 from pathlib import Path
 
-from quadletgen.model import KrunNetwork
 from tests.quadlet_test_support import current_fleet
 
 
@@ -48,15 +47,10 @@ class KrunTapNetworkTests(unittest.TestCase):
 
     def test_every_generated_microvm_uses_a_unique_tap_and_subnet(self):
         configs = self.load_configs()
-        fleet = current_fleet()
 
         taps = set()
         subnets = set()
-        for service in fleet.services:
-            self.assertEqual(service.container.network, "host")
-            self.assertIsNotNone(service.krun)
-            assert service.krun is not None
-            self.assertIs(service.krun.network, KrunNetwork.TAP)
+        for service in configs:
             taps.add(service.tap_name)
             subnets.add(service.tap_guest.network)
 

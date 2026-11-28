@@ -17,17 +17,14 @@ display-name = "Grafana"
 [container]
 image = "docker.io/grafana/grafana:13.3.2@sha256:81556409ba48b2b922e0adb69a2511337d8ba7578f11962eefa6149a2d815101"
 log-driver = "journald"
-network = "host"
 # Avoid the host's loopback-only systemd-resolved stub inside the krun guest.
 # Plugin installation can require external name resolution during startup.
 dns = ["100.100.100.100"]
 container-user = 0
 
 [krun]
-enabled = true
 cpus = 2
 ram-mib = 2048
-network = "tap"
 ipv4 = "10.253.3.2/30"
 probe-endpoint = "http"
 probe-timeout-sec = 60

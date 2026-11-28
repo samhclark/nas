@@ -28,9 +28,19 @@ def service_toml(
     role: str = "test",
     container: str = "",
     krun: str | None = None,
+    probe_endpoint: str | None = None,
     extra: str = "",
 ) -> str:
-    krun_section = f"\n[krun]\n{krun}\n" if krun is not None else ""
+    if krun is None:
+        if probe_endpoint is None:
+            probe_endpoint = "probe"
+            container += '\n[[container.endpoints]]\nname = "probe"\nport = 65535\n'
+        subnet, offset = divmod(uid, 64)
+        krun = (
+            "cpus = 1\nram-mib = 128\n"
+            f'ipv4 = "10.{subnet % 256}.{offset * 4}.2/30"\n'
+            f'probe-endpoint = "{probe_endpoint}"'
+        )
     return f"""
 [service]
 name = "{name}"
@@ -47,7 +57,10 @@ display-name = "Test service"
 [container]
 image = "example.invalid/{name}:1@sha256:{'a' * 64}"
 {container}
-{krun_section}
+
+[krun]
+{krun}
+
 {extra}
 """
 

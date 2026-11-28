@@ -22,7 +22,6 @@ mapped-group = "media"
 [container]
 image = "lscr.io/linuxserver/sonarr:4.0.20.3014-ls329@sha256:44b06045a98bc1f237b9ffefc4b28dab64cb29305e4a2a94875ae93b5224e4cc"
 log-driver = "journald"
-network = "host"
 container-user = 1000
 entrypoint = "/usr/share/nas/sonarr/sonarr-entrypoint.sh"
 health-cmd = "none"
@@ -44,10 +43,8 @@ target = "/usr/share/nas/sonarr"
 options = "ro"
 
 [krun]
-enabled = true
 cpus = 2
 ram-mib = 1024
-network = "tap"
 ipv4 = "10.253.14.2/30"
 probe-endpoint = "http"
 probe-timeout-sec = 300

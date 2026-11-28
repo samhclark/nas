@@ -17,14 +17,11 @@ display-name = "vmalert"
 [container]
 image = "docker.io/victoriametrics/vmalert:v1.157.0@sha256:c550cfc345a1f3e130a3c78b3f5a910122448c66b3008d9a29eaa0559e9a23dd"
 log-driver = "journald"
-network = "host"
 exec = "-datasource.url=http://victoria-metrics.krun:8428 -remoteWrite.url=http://victoria-metrics.krun:8428 -remoteRead.url=http://victoria-metrics.krun:8428 -notifier.url=http://alertmanager.krun:9093 -rule=/etc/vmalert/alert-rules.yml -httpListenAddr=0.0.0.0:8880 -loggerFormat=json -loggerLevel=INFO"
 
 [krun]
-enabled = true
 cpus = 1
 ram-mib = 256
-network = "tap"
 ipv4 = "10.253.4.2/30"
 probe-endpoint = "http"
 

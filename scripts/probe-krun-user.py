@@ -92,7 +92,7 @@ def main() -> int:
     classification = probe_identity(database.container.image)
     print(f"krun database identity: {classification}", flush=True)
     valkey = load_service(VALKEY_SPEC)
-    if not valkey.tap_spec.guest_bootstrap_root:
+    if not valkey.krun.guest_bootstrap_root:
         raise RuntimeError("Valkey requires explicit guest-root bootstrap")
     classification = probe_identity(valkey.container.image, guest_bootstrap_root=True)
     if classification != "guest-root-fallback":

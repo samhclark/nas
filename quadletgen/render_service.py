@@ -8,8 +8,6 @@ from .headers import generated_header
 from .model import (
     DependencyCondition,
     Fleet,
-    KrunPasst,
-    KrunTap,
     Protocol,
     SUBID_COUNT,
     Service,
@@ -51,26 +49,20 @@ def container_unit(service: Service, fleet: Fleet) -> str:
         lines.append(f"LogDriver={container.log_driver}")
     if container.entrypoint is not None:
         lines.append(f"Entrypoint={container.entrypoint}")
-    if krun is not None:
-        lines.append("PodmanArgs=--runtime=krun")
-        lines.append(f"Annotation=krun.cpus={krun.cpus}")
-        lines.append(f"Annotation=krun.ram_mib={krun.ram_mib}")
-        if isinstance(krun, KrunPasst):
-            lines.append("Annotation=krun.use_passt=1")
-        elif isinstance(krun, KrunTap):
-            lines.append(f"Annotation=krun.tap_name={service.tap_name}")
-            if krun.guest_bootstrap_root:
-                lines.append("Annotation=krun.guest_bootstrap_root=1")
-        lines.append("StopSignal=SIGINT")
-    if container.network is not None:
-        lines.append(f"Network={container.network}")
-    if service.active_tap:
-        # libkrun opens /dev/net/tun after crun enters the container mount
-        # namespace, so the device must exist there as well as on the host.
-        lines.append("AddDevice=/dev/net/tun")
-        for peer in fleet.active_taps:
-            lines.append(f"AddHost={peer.info.name}.krun:{peer.tap_guest.ip}")
-        lines.append(f"AddHost=host.krun.internal:{service.tap_gateway.ip}")
+    lines.append("PodmanArgs=--runtime=krun")
+    lines.append(f"Annotation=krun.cpus={krun.cpus}")
+    lines.append(f"Annotation=krun.ram_mib={krun.ram_mib}")
+    lines.append(f"Annotation=krun.tap_name={service.tap_name}")
+    if krun.guest_bootstrap_root:
+        lines.append("Annotation=krun.guest_bootstrap_root=1")
+    lines.append("StopSignal=SIGINT")
+    lines.append("Network=host")
+    # libkrun opens /dev/net/tun after crun enters the container mount
+    # namespace, so the device must exist there as well as on the host.
+    lines.append("AddDevice=/dev/net/tun")
+    for peer in fleet.active_taps:
+        lines.append(f"AddHost={peer.info.name}.krun:{peer.tap_guest.ip}")
+    lines.append(f"AddHost=host.krun.internal:{service.tap_gateway.ip}")
     for server in container.dns:
         lines.append(f"DNS={server}")
     for setting in container.sysctls:
@@ -139,42 +131,24 @@ def container_unit(service: Service, fleet: Fleet) -> str:
             f"{target}:ro,Z"
         )
 
-    published_endpoints = tuple(
-        endpoint
-        for endpoint in container.endpoints
-        if endpoint.publication is not None
-    )
-    if published_endpoints and not isinstance(krun, KrunTap):
-        lines.append("")
-        for endpoint in published_endpoints:
-            suffix = (
-                ""
-                if endpoint.protocol is Protocol.TCP
-                else f"/{endpoint.protocol.value}"
-            )
-            lines.append(
-                f"PublishPort={endpoint.publication}:{endpoint.port}{suffix}"
-            )
-
     if container.exec is not None:
         lines += ["", f"Exec={container.exec}"]
 
     lines += ["", "[Service]"]
-    if service.active_tap:
-        lines.append("ExecStartPre=/usr/bin/test -c /dev/net/tun")
+    lines.append("ExecStartPre=/usr/bin/test -c /dev/net/tun")
+    lines.append(
+        "ExecStartPre=/usr/bin/bash -ceu '"
+        "for i in {1..90}; do "
+        "if /usr/bin/test -r /run/nas-krun-network/policy-ready && "
+        f"/usr/bin/test -e /sys/class/net/{service.tap_name}; then exit 0; fi; "
+        "sleep 1; done; "
+        'echo "krun network policy was not ready within 90 seconds" >&2; exit 1'"'"
+    )
+    if krun.egress == "mullvad":
         lines.append(
-            "ExecStartPre=/usr/bin/bash -ceu '"
-            "for i in {1..90}; do "
-            "if /usr/bin/test -r /run/nas-krun-network/policy-ready && "
-            f"/usr/bin/test -e /sys/class/net/{service.tap_name}; then exit 0; fi; "
-            "sleep 1; done; "
-            'echo "krun network policy was not ready within 90 seconds" >&2; exit 1'"'"
+            "ExecStartPre=/usr/local/bin/nas-wait-for-readiness.sh "
+            "marker /run/nas-egress/mullvad/ready 60 1"
         )
-        if getattr(krun, "egress", None) == "mullvad":
-            lines.append(
-                "ExecStartPre=/usr/local/bin/nas-wait-for-readiness.sh "
-                "marker /run/nas-egress/mullvad/ready 60 1"
-            )
     lines += [
         f"ExecStartPre=/usr/bin/test -r /run/nas-secrets/"
         f"{info.name}/{secret.name}"
@@ -210,17 +184,16 @@ def container_unit(service: Service, fleet: Fleet) -> str:
             "ExecStartPre=/usr/local/bin/nas-assert-tcp-ports-free.sh "
             f"{host_ports}"
         )
-    if service.active_tap:
-        probe = service.endpoints_by_name[service.tap_spec.probe_endpoint]
-        lines.append(
-            "ExecStartPost=/usr/bin/bash -ceu '"
-            f"for i in {{1..{service.tap_spec.probe_timeout_sec}}}; do "
-            f"if /usr/bin/timeout 1 /usr/bin/bash -c \"</dev/tcp/{service.tap_guest.ip}/{probe.port}\" "
-            ">/dev/null 2>&1; "
-            "then exit 0; fi; sleep 1; done; "
-            f"echo \"libkrun guest {service.tap_guest.ip}:{probe.port} was not reachable\" >&2; "
-            "exit 1'"
-        )
+    probe = service.endpoints_by_name[krun.probe_endpoint]
+    lines.append(
+        "ExecStartPost=/usr/bin/bash -ceu '"
+        f"for i in {{1..{krun.probe_timeout_sec}}}; do "
+        f"if /usr/bin/timeout 1 /usr/bin/bash -c \"</dev/tcp/{service.tap_guest.ip}/{probe.port}\" "
+        ">/dev/null 2>&1; "
+        "then exit 0; fi; sleep 1; done; "
+        f"echo \"libkrun guest {service.tap_guest.ip}:{probe.port} was not reachable\" >&2; "
+        "exit 1'"
+    )
     lines.append("Restart=always")
     lines.append(f"RestartSec={service.unit.restart_sec}")
     if service.unit.success_exit_status is not None:

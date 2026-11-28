@@ -25,21 +25,7 @@ class FleetIdentityTests(unittest.TestCase):
         return parse_fleet_fixture(path, parse_fleet_groups)
 
     def valid_service(self, *, identity: str = "") -> str:
-        return service_toml(
-            container=(
-                'network = "host"\n\n'
-                "[[container.endpoints]]\n"
-                'name = "http"\n'
-                "port = 8080"
-            ),
-            krun=(
-                "enabled = true\ncpus = 1\nram-mib = 128\n"
-                'network = "tap"\n'
-                'ipv4 = "10.253.99.2/30"\n'
-                'probe-endpoint = "http"'
-            ),
-            extra=identity,
-        )
+        return service_toml(extra=identity)
 
     def test_fleet_loader_reads_config_once_and_handles_missing_config(self):
         with tempfile.TemporaryDirectory(dir=REPO) as directory_name:

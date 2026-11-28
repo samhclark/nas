@@ -16,15 +16,12 @@ display-name = "VictoriaLogs"
 
 [container]
 image = "docker.io/victoriametrics/victoria-logs:v1.54.0@sha256:ee4e820cac3721f5f5d91641b950c22439593adc4224f9655e5333d5a84c1dfe"
-network = "host"
 container-user = 0
 exec = "-storageDataPath=/victoria-logs-data -retentionPeriod=7d -retention.maxDiskUsagePercent=80 -search.maxQueryTimeRange=7d -search.maxQueryDuration=15s -search.maxConcurrentRequests=2 -httpListenAddr=0.0.0.0:9428"
 
 [krun]
-enabled = true
 cpus = 1
 ram-mib = 1024
-network = "tap"
 ipv4 = "10.253.18.2/30"
 probe-endpoint = "http"
 

@@ -207,14 +207,13 @@ to own the database extension and security-update release train.
 
 ### 3. Allocate the TAP and exposure policy
 
-Production services use a root-managed TAP:
+Each service declares its libkrun resources and routed TAP address in a required
+`[krun]` section. The compiler supplies the Podman host network setting.
 
 ```toml
 [krun]
-enabled = true
 cpus = 1
 ram-mib = 256
-network = "tap"
 ipv4 = "10.253.10.2/30"
 probe-endpoint = "http"
 ```

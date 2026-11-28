@@ -46,23 +46,7 @@ class SharedStorageTests(unittest.TestCase):
             fleet_path = directory / "_fleet.toml"
             service_path = directory / "service.toml"
             fleet_path.write_text(FLEET)
-            service_path.write_text(
-                service_toml(
-                    container=(
-                        'network = "host"\n\n'
-                        "[[container.endpoints]]\n"
-                        'name = "http"\n'
-                        "port = 8080"
-                    ),
-                    krun=(
-                        "enabled = true\ncpus = 1\nram-mib = 128\n"
-                        'network = "tap"\n'
-                        'ipv4 = "10.253.99.2/30"\n'
-                        'probe-endpoint = "http"'
-                    ),
-                    extra=identity + export,
-                )
-            )
+            service_path.write_text(service_toml(extra=identity + export))
             return load_fleet(directory)
 
     def test_parser_model_and_rendering_share_one_named_resource(self):

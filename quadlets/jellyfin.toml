@@ -20,7 +20,6 @@ supplemental-groups = ["media"]
 [container]
 image = "docker.io/jellyfin/jellyfin:12.4@sha256:fea863d0cd9ec445985d9c75fc6ed64e38a1d2766cf0c250a33d553f4fc1b771"
 log-driver = "journald"
-network = "host"
 container-user = 0
 # Keep the pinned image's default logging configuration: it writes the
 # application stream to stdout and rolling application logs under /config/log.
@@ -33,10 +32,8 @@ health-cmd = "none"
 JELLYFIN_PublishedServerUrl = "https://jellyfin.i.samhclark.com"
 
 [krun]
-enabled = true
 cpus = 4
 ram-mib = 4096
-network = "tap"
 ipv4 = "10.253.2.2/30"
 probe-endpoint = "http"
 
