@@ -10,15 +10,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from quadletgen.parser import load_service
+
 
 REPO = Path(__file__).resolve().parents[1]
 ENTRYPOINT_ROOT = REPO / "overlay-root/usr/share/nas"
 SAB_HELPER = ENTRYPOINT_ROOT / "sabnzbd/ensure-host-whitelist.py"
 SAB_HOSTNAMES = "sabnzbd.i.samhclark.com,sabnzbd.krun"
-SAB_IMAGE = (
-    "lscr.io/linuxserver/sabnzbd:5.1.0-ls266@"
-    "sha256:b0f9755d795913bd26ae3f3a12805668ab0681ab847a7624568559c573fc7cae"
-)
+SAB_IMAGE = load_service(REPO / "quadlets/sabnzbd.toml").container.image
 
 
 def _host_helper_available() -> bool:
