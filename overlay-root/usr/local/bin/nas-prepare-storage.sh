@@ -239,19 +239,6 @@ parse_storage_record() {
             fi
             append_entry "managed-zfs" "${dataset}" "${path}" "${mode}" "${properties}"
             ;;
-        existing-zfs)
-            (($# == 2)) || die "line ${line_number}: existing-zfs records require 2 fields"
-            dataset="$1"
-            path="$2"
-            validate_dataset "${dataset}" || die "line ${line_number}: invalid existing dataset"
-            [[ "${dataset}" == "tank/videos" ]] || die "line ${line_number}: only tank/videos may be declared existing-zfs"
-            is_absolute_path "${path}" || die "line ${line_number}: invalid existing mount path"
-            [[ "${path}" == /var/* ]] || die "line ${line_number}: existing mount paths must be below /var"
-            HAS_ZFS=1
-            register_dataset "${dataset}" "${line_number}"
-            register_path "${path}" "${line_number}"
-            append_entry "existing-zfs" "${dataset}" "${path}" "-" "-"
-            ;;
         *)
             die "line ${line_number}: unknown record type '${kind}'"
             ;;
@@ -720,7 +707,7 @@ for dataset in "${ENTRY_DATASET[@]}"; do
 done
 
 # Complete all existence, mount, and immutable-property checks before planning
-# or performing a mutation. Existing datasets are never synthesized.
+# or performing a mutation.
 for index in "${!ENTRY_KIND[@]}"; do
     kind="${ENTRY_KIND[index]}"
     dataset="${ENTRY_DATASET[index]}"
@@ -744,11 +731,6 @@ for index in "${!ENTRY_KIND[@]}"; do
                 ENTRY_WAS_MISSING[index]=1
             fi
             ;;
-        existing-zfs)
-            dataset_exists "${dataset}" || die "required existing dataset '${dataset}' does not exist"
-            [[ -d "${path}" && ! -L "${path}" ]] || die "existing mount path ${path} is not a real directory"
-            validate_mount "${dataset}" "${path}"
-            ;;
     esac
 done
 
@@ -762,7 +744,6 @@ bootstrap_needed=0
 repair_needed="${requested_repair}"
 policy_needed=0
 for index in "${!ENTRY_KIND[@]}"; do
-    kind="${ENTRY_KIND[index]}"
     path="${ENTRY_PATH[index]}"
     [[ "${ENTRY_WAS_MISSING[index]}" -eq 0 ]] || bootstrap_needed=1
     [[ "${path}" != "none" ]] || continue
@@ -772,13 +753,7 @@ for index in "${!ENTRY_KIND[@]}"; do
     fi
     [[ "${ENTRY_WAS_MISSING[index]}" -eq 0 ]] || continue
 
-    if [[ "${kind}" == "existing-zfs" ]]; then
-        if ! labels_are_ready "${path}"; then
-            repair_needed=1
-            report_label_mismatch "${path}"
-            [[ "${requested_repair}" -eq 1 ]] || repair_required "${path} needs an explicit repair request at ${REPAIR_REQUEST}"
-        fi
-    elif [[ "$(stat_value '%u:%g' "${path}")" == "0:0" ]]; then
+    if [[ "$(stat_value '%u:%g' "${path}")" == "0:0" ]]; then
         repair_needed=1
         log "detected interrupted repair marker on ${path}"
     elif ! owned_state_is_ready "${path}" "${ENTRY_MODE[index]}"; then
@@ -805,9 +780,6 @@ for index in "${!ENTRY_KIND[@]}"; do
             ;;
         managed-zfs)
             create_managed_dataset "${index}"
-            ;;
-        existing-zfs)
-            die "internal error: existing dataset was marked for creation"
             ;;
     esac
 done
@@ -836,7 +808,6 @@ if [[ "${repair_needed}" -eq 1 ]]; then
     # Arm every owned root before recursive work. A root left as 0:0 is the
     # durable signal that a later invocation must resume the full repair.
     for index in "${!ENTRY_KIND[@]}"; do
-        [[ "${ENTRY_KIND[index]}" != "existing-zfs" ]] || continue
         [[ "${ENTRY_PATH[index]}" != "none" ]] || continue
         chown root:root "${ENTRY_PATH[index]}"
     done
@@ -844,15 +815,12 @@ if [[ "${repair_needed}" -eq 1 ]]; then
     for index in "${!ENTRY_KIND[@]}"; do
         path="${ENTRY_PATH[index]}"
         [[ "${path}" != "none" ]] || continue
-        if [[ "${ENTRY_KIND[index]}" != "existing-zfs" ]]; then
-            repair_descendant_ownership "${path}"
-            verify_descendant_ownership "${path}"
-        fi
+        repair_descendant_ownership "${path}"
+        verify_descendant_ownership "${path}"
         restorecon_recursive "${path}"
     done
 
     for index in "${!ENTRY_KIND[@]}"; do
-        [[ "${ENTRY_KIND[index]}" != "existing-zfs" ]] || continue
         [[ "${ENTRY_PATH[index]}" != "none" ]] || continue
         chown "${SERVICE_UID}:${SERVICE_GID}" "${ENTRY_PATH[index]}"
         chmod "${ENTRY_MODE[index]}" "${ENTRY_PATH[index]}"
@@ -874,11 +842,7 @@ for index in "${!ENTRY_KIND[@]}"; do
     path="${ENTRY_PATH[index]}"
     [[ "${path}" != "none" ]] || continue
     fcontext_is_ready "${path}" || die "SELinux policy does not cover ${path}"
-    if [[ "${ENTRY_KIND[index]}" == "existing-zfs" ]]; then
-        labels_are_ready "${path}" || die "${path} has an unexpected bounded SELinux label"
-    else
-        owned_state_is_ready "${path}" "${ENTRY_MODE[index]}" || die "${path} has unexpected bounded ownership, mode, or SELinux state"
-    fi
+    owned_state_is_ready "${path}" "${ENTRY_MODE[index]}" || die "${path} has unexpected bounded ownership, mode, or SELinux state"
 done
 
 if [[ "${requested_repair}" -eq 1 ]]; then

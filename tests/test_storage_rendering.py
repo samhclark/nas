@@ -30,14 +30,19 @@ container-path = "/data"
 access = "read-write"
 
 [[storage]]
-name = "media"
-kind = "existing-zfs"
-dataset = "tank/videos"
-host-path = "/var/zfs/tank/videos"
+name = "metadata"
+kind = "managed-zfs"
+dataset = "tank/service/metadata"
+host-path = "/var/lib/service-metadata"
+mode = "0750"
+record-size = "4K"
+compression = "lz4"
+atime = false
+primary-cache = "metadata"
 
 [[storage.exports]]
-subpath = "movies"
-container-path = "/media/movies"
+subpath = "."
+container-path = "/metadata"
 access = "read-only"
 """
 
@@ -55,7 +60,7 @@ class StorageRenderingTests(unittest.TestCase):
 
         self.assertIn("Volume=/var/lib/service/data:/data", unit)
         self.assertIn(
-            "Volume=/var/zfs/tank/videos/movies:/media/movies:ro",
+            "Volume=/var/lib/service-metadata:/metadata:ro",
             unit,
         )
         self.assertIn(
@@ -69,8 +74,8 @@ class StorageRenderingTests(unittest.TestCase):
             unit,
         )
         self.assertIn(
-            "--path /var/zfs/tank/videos/movies --source tank/videos "
-            "--access rx",
+            "--path /var/lib/service-metadata --source tank/service/metadata "
+            "--owner 51999:51999 --access rx",
             unit,
         )
 
@@ -104,7 +109,9 @@ interval-sec = 1
                 "service|service|_nas_service|51999|51999|519990000|65536|-|-",
                 "directory|/var/lib/service|0750",
                 "directory|/var/lib/service/data|0750",
-                "existing-zfs|tank/videos|/var/zfs/tank/videos",
+                "managed-zfs|tank/service|none|-|-",
+                "managed-zfs|tank/service/metadata|/var/lib/service-metadata|0750|"
+                "recordsize=4K,compression=lz4,atime=off,primarycache=metadata",
             ],
         )
         self.assertIn("Requires=zfs.target ensure-nas-service-account.service", unit)

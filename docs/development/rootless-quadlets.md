@@ -271,7 +271,8 @@ container-path = "/var/lib/example"
 access = "read-write"
 ```
 
-Managed and required-existing ZFS use the same declaration language. The
+Managed ZFS belongs in service `[[storage]]`. Declare required-existing ZFS
+under `[[resources]]` in `_fleet.toml` and mount it with `[[shared-storage]]`. The
 compiler derives the container mount, host manifest and unit, SELinux policy,
 and readiness checks. Do not add a handwritten preparation unit or a raw
 `[[container.volumes]]` source below `/var`. See

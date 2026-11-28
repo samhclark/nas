@@ -11,7 +11,6 @@ from typing import NoReturn
 from .errors import ConfigError
 from .storage_model import (
     DirectoryStorage,
-    ExistingZfsStorage,
     FleetZfsStorage,
     ManagedZfsStorage,
     SharedStorageExport,
@@ -34,7 +33,6 @@ MANAGED_ZFS_KEYS = COMMON_KEYS | {
     "atime",
     "primary-cache",
 }
-EXISTING_ZFS_KEYS = COMMON_KEYS | {"dataset"}
 
 
 def parse_storage(raw: object, source: str) -> tuple[StorageSpec, ...]:
@@ -129,12 +127,9 @@ def _parse_storage_item(raw: object, source: str, index: int) -> StorageSpec:
     if kind == "managed-zfs":
         table = _table(raw, item_path, MANAGED_ZFS_KEYS)
         return _construct_managed_zfs(table, source, item_path)
-    if kind == "existing-zfs":
-        table = _table(raw, item_path, EXISTING_ZFS_KEYS)
-        return _construct_existing_zfs(table, source, item_path)
     _fail(
         f"{item_path}.kind",
-        'must be "directory", "managed-zfs", or "existing-zfs"',
+        'must be "directory" or "managed-zfs"',
     )
 
 
@@ -258,25 +253,6 @@ def _construct_managed_zfs(
         _reraise_model_error(error, source)
 
 
-def _construct_existing_zfs(
-    table: Mapping[str, object],
-    source: str,
-    path: str,
-) -> ExistingZfsStorage:
-    try:
-        return ExistingZfsStorage(
-            name=_parse_name(table, path),
-            dataset=_string(
-                _required(table, "dataset", path),
-                f"{path}.dataset",
-            ),
-            host_path=_parse_host_path(table, path),
-            exports=_parse_exports(_required(table, "exports", path), path),
-        )
-    except ConfigError as error:
-        _reraise_model_error(error, source)
-
-
 def _parse_name(table: Mapping[str, object], path: str) -> str:
     return _string(_required(table, "name", path), f"{path}.name")
 
@@ -360,7 +336,7 @@ def _validate_collection(storage: tuple[StorageSpec, ...], path: str) -> None:
     datasets = [
         item.dataset
         for item in storage
-        if isinstance(item, (ManagedZfsStorage, ExistingZfsStorage))
+        if isinstance(item, ManagedZfsStorage)
     ]
     if len(set(datasets)) != len(datasets):
         _fail(path, "contains duplicate ZFS datasets")
