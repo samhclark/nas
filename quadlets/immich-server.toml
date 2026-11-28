@@ -17,7 +17,6 @@ display-name = "Immich server"
 [container]
 image = "ghcr.io/immich-app/immich-server:v3.4.2@sha256:fc880c1bf665b4aab1e74c15e56ab871225989cd546536e6b77e771869af06bd"
 log-driver = "journald"
-network = "host"
 container-user = 1000
 no-new-privileges = true
 drop-capabilities = ["NET_RAW"]
@@ -43,10 +42,8 @@ IMMICH_LOG_FORMAT = "json"
 TINI_SUBREAPER = "1"
 
 [krun]
-enabled = true
 cpus = 4
 ram-mib = 4096
-network = "tap"
 ipv4 = "10.253.10.2/30"
 probe-endpoint = "http"
 probe-timeout-sec = 300

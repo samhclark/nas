@@ -22,7 +22,6 @@ mapped-group = "media"
 [container]
 image = "ghcr.io/linuxserver/bazarr:v1.6.2-ls374@sha256:b3db4247d3afa0c68bc5aa311bedd67b1caf4b3eabc3a85577682970435d5013"
 log-driver = "journald"
-network = "host"
 container-user = 1000
 entrypoint = "/usr/share/nas/bazarr/bazarr-entrypoint.sh"
 health-cmd = "none"
@@ -40,10 +39,8 @@ target = "/usr/share/nas/bazarr"
 options = "ro"
 
 [krun]
-enabled = true
 cpus = 2
 ram-mib = 1024
-network = "tap"
 ipv4 = "10.253.20.2/30"
 probe-endpoint = "http"
 probe-timeout-sec = 300

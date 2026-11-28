@@ -13,7 +13,7 @@ def mullvad_readiness_script(fleet: Fleet) -> str:
     egress = fleet.egress
     selected = tuple(
         service for service in fleet.active_taps
-        if getattr(service.krun, "egress", None) == "mullvad"
+        if service.krun.egress == "mullvad"
     )
     selected_taps = " ".join(f'"{service.tap_name}"' for service in selected)
     selected_guests = " ".join(

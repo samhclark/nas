@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from types import MappingProxyType
-from typing import Literal, Mapping, NoReturn, TypeAlias
+from typing import Literal, Mapping, NoReturn
 from urllib.parse import urlsplit
 
 from .errors import ConfigError
@@ -53,12 +53,6 @@ SYSTEMD_SERVICE_RE = re.compile(r"^[A-Za-z0-9_.@-]+\.service$")
 class Protocol(str, Enum):
     TCP = "tcp"
     UDP = "udp"
-
-
-class KrunNetwork(str, Enum):
-    TSI = "tsi"
-    PASST = "passt"
-    TAP = "tap"
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,7 +148,7 @@ class Endpoint:
     name: str
     port: int
     protocol: Protocol = Protocol.TCP
-    host_address: ipaddress.IPv4Address | ipaddress.IPv6Address | None = None
+    host_address: ipaddress.IPv4Address | None = None
     host_port: int | None = None
     consumers: tuple[str, ...] = ()
 
@@ -162,10 +156,7 @@ class Endpoint:
     def publication(self) -> str | None:
         if self.host_address is None or self.host_port is None:
             return None
-        address = str(self.host_address)
-        if isinstance(self.host_address, ipaddress.IPv6Address):
-            address = f"[{address}]"
-        return f"{address}:{self.host_port}"
+        return f"{self.host_address}:{self.host_port}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -188,7 +179,6 @@ class ContainerSpec:
     log_driver: Literal["journald"] | None = None
     entrypoint: str | None = None
     enabled: bool = True
-    network: Literal["host"] | None = None
     container_user: int | None = None
     health_cmd: Literal["none"] | None = None
     no_new_privileges: bool = False
@@ -219,28 +209,6 @@ class Dependency:
 
 
 @dataclass(frozen=True, slots=True)
-class KrunTsi:
-    cpus: int
-    ram_mib: int
-    egress: Literal["mullvad"] | None = None
-    network: Literal[KrunNetwork.TSI] = field(
-        default=KrunNetwork.TSI,
-        init=False,
-    )
-
-
-@dataclass(frozen=True, slots=True)
-class KrunPasst:
-    cpus: int
-    ram_mib: int
-    egress: Literal["mullvad"] | None = None
-    network: Literal[KrunNetwork.PASST] = field(
-        default=KrunNetwork.PASST,
-        init=False,
-    )
-
-
-@dataclass(frozen=True, slots=True)
 class KrunTap:
     cpus: int
     ram_mib: int
@@ -250,13 +218,6 @@ class KrunTap:
     guest_bootstrap_root: bool = False
     host_access: tuple[int, ...] = ()
     egress: Literal["mullvad"] | None = None
-    network: Literal[KrunNetwork.TAP] = field(
-        default=KrunNetwork.TAP,
-        init=False,
-    )
-
-
-KrunSpec: TypeAlias = KrunTsi | KrunPasst | KrunTap
 
 
 @dataclass(frozen=True, slots=True)
@@ -283,8 +244,8 @@ class Service:
     info: ServiceInfo
     host: HostIdentity
     container: ContainerSpec
+    krun: KrunTap
     identity: ServiceIdentity = field(default_factory=ServiceIdentity)
-    krun: KrunSpec | None = None
     storage: tuple[StorageSpec, ...] = ()
     shared_storage: tuple[SharedStorageExport, ...] = ()
     assets: AssetsSpec | None = None
@@ -296,13 +257,7 @@ class Service:
 
     @property
     def active_tap(self) -> bool:
-        return self.container.enabled and isinstance(self.krun, KrunTap)
-
-    @property
-    def tap_spec(self) -> KrunTap:
-        if not self.active_tap or not isinstance(self.krun, KrunTap):
-            raise ConfigError(f"{self.source.name}: service has no active TAP")
-        return self.krun
+        return self.container.enabled
 
     @property
     def tap_name(self) -> str:
@@ -313,7 +268,7 @@ class Service:
 
     @property
     def tap_guest(self) -> ipaddress.IPv4Interface:
-        return self.tap_spec.ipv4
+        return self.krun.ipv4
 
     @property
     def tap_gateway(self) -> ipaddress.IPv4Interface:
@@ -756,7 +711,7 @@ def _validate_endpoints(service: Service) -> None:
     seen_names: set[str] = set()
     seen_listeners: set[tuple[int, Protocol]] = set()
     seen_publications: set[
-        tuple[ipaddress.IPv4Address | ipaddress.IPv6Address, int, Protocol]
+        tuple[ipaddress.IPv4Address, int, Protocol]
     ] = set()
     for index, endpoint in enumerate(service.container.endpoints, start=1):
         item_path = f"{path}[{index}]"
@@ -780,11 +735,13 @@ def _validate_endpoints(service: Service) -> None:
         if any(publication_fields) and not all(publication_fields):
             _fail(f"{item_path}.host", "must contain both an address and port")
         if endpoint.host_address is not None and endpoint.host_port is not None:
-            if not isinstance(
-                endpoint.host_address,
-                (ipaddress.IPv4Address, ipaddress.IPv6Address),
-            ):
-                _fail(f"{item_path}.host", "must contain an IP address")
+            if not isinstance(endpoint.host_address, ipaddress.IPv4Address):
+                _fail(f"{item_path}.host", "must contain an IPv4 address")
+            if str(endpoint.host_address) not in {"127.0.0.1", "0.0.0.0"}:
+                _fail(
+                    f"{item_path}.host",
+                    'TAP host publications support only "127.0.0.1" or "0.0.0.0" addresses',
+                )
             _validate_port(endpoint.host_port, f"{item_path}.host port")
             publication = (
                 endpoint.host_address,
@@ -815,8 +772,6 @@ def _validate_container(service: Service) -> None:
         _validate_unit_atom(container.entrypoint, f"{path}.entrypoint")
     if type(container.enabled) is not bool:
         _fail(f"{path}.enabled", "must be a boolean")
-    if container.network not in {None, "host"}:
-        _fail(f"{path}.network", 'currently supports only "host"')
     if container.container_user is not None:
         _validate_integer(
             container.container_user,
@@ -926,10 +881,8 @@ def _validate_container(service: Service) -> None:
 
 def _validate_krun(service: Service) -> None:
     krun = service.krun
-    if krun is None:
-        return
     path = f"{service.source.name}: [krun]"
-    egress = getattr(krun, "egress", None)
+    egress = krun.egress
     if egress is not None:
         if egress != "mullvad":
             _fail(f"{path}.egress", 'must be "mullvad"')
@@ -940,25 +893,9 @@ def _validate_krun(service: Service) -> None:
             )
     _validate_integer(krun.cpus, f"{path}.cpus", minimum=1)
     _validate_integer(krun.ram_mib, f"{path}.ram-mib", minimum=128)
-    if service.container.network == "host":
-        for server in service.container.dns:
-            if server.is_loopback:
-                _fail(
-                    path,
-                    'network = "host" cannot use loopback DNS server '
-                    f"{str(server)!r}",
-                )
-    if isinstance(krun, KrunPasst):
-        if service.container.network == "host":
-            _fail(
-                path,
-                'network = "passt" requires a private container network namespace',
-            )
-        return
-    if isinstance(krun, KrunTsi):
-        return
-    if not isinstance(krun, KrunTap):
-        _fail(path, "has an unsupported network implementation")
+    for server in service.container.dns:
+        if server.is_loopback:
+            _fail(path, f"TAP networking cannot use loopback DNS server {str(server)!r}")
     if not isinstance(krun.guest_bootstrap_root, bool):
         _fail(f"{path}.guest-bootstrap-root", "must be a boolean")
     if krun.guest_bootstrap_root:
@@ -972,8 +909,6 @@ def _validate_krun(service: Service) -> None:
                 "requires a positive container-user and an explicit entrypoint "
                 "that drops guest privileges",
             )
-    if service.container.network != "host":
-        _fail(path, 'network = "tap" requires [container].network = "host"')
     if not isinstance(krun.ipv4, ipaddress.IPv4Interface):
         _fail(f"{path}.ipv4", "must be an IPv4 interface address")
     if krun.ipv4.network.prefixlen != 30:
@@ -993,16 +928,6 @@ def _validate_krun(service: Service) -> None:
         minimum=1,
         maximum=900,
     )
-    for endpoint in service.container.endpoints:
-        if endpoint.host_address is not None and str(endpoint.host_address) not in {
-            "127.0.0.1",
-            "0.0.0.0",
-        }:
-            _fail(
-                path,
-                'TAP host publications support only "127.0.0.1" or '
-                '"0.0.0.0" addresses',
-            )
     for port in krun.host_access:
         _validate_port(port, f"{path}.host-access")
     if len(set(krun.host_access)) != len(krun.host_access):
@@ -1105,11 +1030,8 @@ def _validate_service(service: Service) -> None:
         )
     if service.assets is not None and not isinstance(service.assets, AssetsSpec):
         _fail("service.assets", "must be AssetsSpec")
-    if service.krun is not None and not isinstance(
-        service.krun,
-        (KrunTsi, KrunPasst, KrunTap),
-    ):
-        _fail("service.krun", "must be a supported krun specification")
+    if not isinstance(service.krun, KrunTap):
+        _fail("service.krun", "must be KrunTap")
     _validate_service_info(service)
     container_paths = {
         volume.target for volume in service.container.volumes
@@ -1148,15 +1070,6 @@ def _validate_service(service: Service) -> None:
         _fail("service.identity", "must be ServiceIdentity")
     _validate_identity(service)
     _validate_krun(service)
-    if (
-        service.container.endpoints
-        and service.container.network == "host"
-        and not isinstance(service.krun, KrunTap)
-    ):
-        _fail(
-            service.source.name,
-            '[container].endpoints cannot be used with network = "host"',
-        )
     _validate_assets(service)
     _validate_startup(service)
     _validate_unit(service)
@@ -1219,7 +1132,7 @@ def _validate_fleet(fleet: Fleet) -> None:
     ]
 
     for service in services:
-        service_egress = getattr(service.krun, "egress", None)
+        service_egress = service.krun.egress
         if service_egress is not None and fleet.egress is None:
             _fail(
                 service.source.name,
@@ -1340,8 +1253,7 @@ def _validate_fleet(fleet: Fleet) -> None:
                 host_publications[publication_key] = name
         if not service.active_tap:
             continue
-        tap = service.tap_spec
-        network = tap.ipv4.network
+        network = service.krun.ipv4.network
         if network in tap_networks:
             _fail(name, f"TAP subnet {network} is also used by {tap_networks[network]}")
         tap_networks[network] = name

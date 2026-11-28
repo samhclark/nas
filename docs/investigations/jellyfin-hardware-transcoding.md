@@ -29,10 +29,10 @@ the handoff.
 | Last completed work | 2026-08-06: an image-contained Linux 6.18.42 kernel booted successfully with passt and Mesa 26.1.5, but repeated the rejected VirtIO-GPU commands and exposed only `VAEntrypointVideoProc` |
 | Current phase | Add playback/transcode observability, measure the real requirement, and decide between another bounded libkrun experiment and a full KVM/QEMU GPU-assignment path |
 | Recommended next experiment | Adapt only libkrunfw patch 0018 (virtio-gpu fence passing) to the existing external Linux 6.18 probe; stop if useful codecs still do not appear unless upstream identifies another specific small gap |
-| Production runtime | Jellyfin remains rootless under libkrun with 4 vCPUs, 4 GiB RAM, private nested passt, loopback-only host TCP 8096, and software media processing |
+| Production runtime | Jellyfin remains rootless under libkrun with 4 vCPUs, 4 GiB RAM, a dedicated routed TAP, loopback-only host TCP 8096, and software media processing |
 | Production impact so far | None; no Jellyfin restart, host package change, or persistent configuration change was made during GPU probing |
 | Primary blocker | The libkrun 1.19 / virglrenderer 1.3 / guest virtio-gpu native-context path does not expose Intel media codecs even with a guest kernel and Mesa newer than the documented minimums |
-| Secondary blocker | Resolved for networking: crun's broad passt mapping is confined inside Jellyfin's private outer pasta namespace; only host-loopback TCP 8096 is published |
+| Secondary blocker | The standalone passt probe uses a private network namespace. Production publishes TCP 8096 on host loopback through the routed TAP. |
 
 ## Decision Snapshot
 
@@ -420,18 +420,17 @@ Likely repository work:
 - add a reproducible derived Jellyfin image build and pin its resulting digest
 - record the kernel source version, configuration, patches, and corresponding
   source-distribution obligations
-- extend `[krun]` in `generate-quadlets.py` with a narrowly validated field for
-  `gpu-flags`; the typed `network = "passt"` field is already implemented
-- add generated `Annotation=krun.gpu_flags=1411` and
-  `Annotation=krun.use_passt=1`
+- extend `[krun]` with a narrowly validated field for `gpu-flags`
+- validate the external kernel on the production routed TAP and add generated
+  `Annotation=krun.gpu_flags=1411`
 - add `AddDevice=/dev/dri/renderD128`
 - add generator validation and tests; do not use arbitrary unvalidated
   `PodmanArgs=` when a typed field is reasonable
 - preserve all existing Jellyfin storage mounts, ownership, SELinux labeling,
   resource limits, Caddy route, and graceful shutdown behavior
 
-The passt networking gate is complete on the real single-host topology. A
-future GPU integration still requires its own device and codec gates.
+Passt evidence applies to the standalone probe. A future production integration
+requires routed TAP, device, and codec validation.
 
 ### Phase 2E: Production validation
 

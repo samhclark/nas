@@ -7,7 +7,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from quadletgen.compiler import Artifact, compile_fleet
-from quadletgen.model import ConfigError, Fleet, KrunNetwork
+from quadletgen.model import ConfigError, Fleet
 from tests.quadlet_test_support import (
     OVERLAY,
     REPO,
@@ -30,13 +30,6 @@ class CompilerCharacterizationTests(unittest.TestCase):
         self.assertEqual(
             [service.host.uid for service in fleet.services],
             sorted(service.host.uid for service in fleet.services),
-        )
-        self.assertTrue(
-            all(
-                service.krun is not None
-                and service.krun.network is KrunNetwork.TAP
-                for service in fleet.active_taps
-            )
         )
 
     def test_journald_log_driver_is_rendered_only_for_declared_services(self):

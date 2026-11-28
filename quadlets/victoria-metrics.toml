@@ -18,15 +18,12 @@ display-name = "VictoriaMetrics"
 [container]
 image = "docker.io/victoriametrics/victoria-metrics:v1.157.0@sha256:322a7a92fdcc269280e9c38af94c83bc76827a31b792acbc60e44394e7f29c20"
 log-driver = "journald"
-network = "host"
 container-user = 0
 exec = "-storageDataPath=/victoria-metrics-data -retentionPeriod=1 -promscrape.config=/etc/victoria-metrics/promscrape.yml -httpListenAddr=0.0.0.0:8428"
 
 [krun]
-enabled = true
 cpus = 2
 ram-mib = 1024
-network = "tap"
 ipv4 = "10.253.7.2/30"
 probe-endpoint = "http"
 host-access = [9100]

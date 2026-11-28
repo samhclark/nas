@@ -108,13 +108,11 @@ managed-units = ["nas-backup-immich.service"]
                 "service.toml",
                 service_toml(
                     container=(
-                        'network = "host"\n\n'
                         "[[container.endpoints]]\n"
                         'name = "http"\nport = 8080'
                     ),
                     krun=(
-                        "enabled = true\ncpus = 1\nram-mib = 128\n"
-                        'network = "tap"\n'
+                        "cpus = 1\nram-mib = 128\n"
                         'ipv4 = "10.253.19.2/30"\n'
                         'probe-endpoint = "http"'
                     ),
@@ -169,7 +167,7 @@ managed-units = ["nas-backup-immich.service"]
             with self.assertRaisesRegex(ConfigError, "duplicate role 'server'"):
                 Fleet.build([first, second])
 
-    def test_rejects_host_port_collisions_for_non_tap_publishers(self):
+    def test_rejects_host_port_collisions_between_tap_services(self):
         with tempfile.TemporaryDirectory(dir=REPO) as directory_name:
             directory = Path(directory_name)
             first = self.write(
@@ -202,34 +200,11 @@ managed-units = ["nas-backup-immich.service"]
                     ),
                 ),
             )
-            tap = self.write(
-                directory,
-                "tap.toml",
-                service_toml(
-                    name="tap",
-                    uid=51990,
-                    subid_start=800000000,
-                    container=(
-                        'network = "host"\n\n'
-                        "[[container.endpoints]]\n"
-                        'name = "http"\n'
-                        'host = "127.0.0.1:9090"\n'
-                        "port = 9090"
-                    ),
-                    krun=(
-                        "enabled = true\ncpus = 1\nram-mib = 128\n"
-                        'network = "tap"\n'
-                        'ipv4 = "10.253.99.2/30"\n'
-                        'probe-endpoint = "http"'
-                    ),
-                ),
-            )
-
             with self.assertRaisesRegex(
                 ConfigError,
                 "host tcp port 8080 is also published by first.toml",
             ):
-                Fleet.build([first, second, tap])
+                Fleet.build([first, second])
 
     def test_disabled_service_keeps_identity_but_has_no_runtime_artifacts(self):
         with tempfile.TemporaryDirectory(dir=REPO) as directory_name:
@@ -241,7 +216,6 @@ managed-units = ["nas-backup-immich.service"]
                     name="disabled",
                     container=(
                         "enabled = false\n"
-                        'network = "host"\n\n'
                         "[[container.endpoints]]\n"
                         'name = "http"\n'
                         'host = "127.0.0.1:8080"\n'
@@ -250,8 +224,7 @@ managed-units = ["nas-backup-immich.service"]
                         'name = "disabled-token"'
                     ),
                     krun=(
-                        "enabled = true\ncpus = 1\nram-mib = 128\n"
-                        'network = "tap"\n'
+                        "cpus = 1\nram-mib = 128\n"
                         'ipv4 = "10.253.99.2/30"\n'
                         'probe-endpoint = "http"'
                     ),
@@ -269,16 +242,14 @@ managed-units = ["nas-backup-immich.service"]
                     uid=51990,
                     subid_start=800000000,
                     container=(
-                        'network = "host"\n\n'
                         "[[container.endpoints]]\n"
                         'name = "http"\n'
                         'host = "127.0.0.1:8080"\n'
                         "port = 8080"
                     ),
                     krun=(
-                        "enabled = true\ncpus = 1\nram-mib = 128\n"
-                        'network = "tap"\n'
-                        'ipv4 = "10.253.98.2/30"\n'
+                        "cpus = 1\nram-mib = 128\n"
+                        'ipv4 = "10.253.99.2/30"\n'
                         'probe-endpoint = "http"'
                     ),
                 ),
@@ -323,7 +294,7 @@ managed-units = ["nas-backup-immich.service"]
             service = self.write(
                 directory,
                 "service.toml",
-                service_toml(),
+                service_toml(container="enabled = false"),
             )
             with self.assertRaisesRegex(
                 ConfigError,
@@ -337,21 +308,7 @@ managed-units = ["nas-backup-immich.service"]
             service = self.write(
                 directory,
                 "service.toml",
-                service_toml(
-                    container=(
-                        'network = "host"\n\n'
-                        "[[container.endpoints]]\n"
-                        'name = "http"\n'
-                        'host = "127.0.0.1:8080"\n'
-                        "port = 8080"
-                    ),
-                    krun=(
-                        "enabled = true\ncpus = 1\nram-mib = 128\n"
-                        'network = "tap"\n'
-                        'ipv4 = "10.253.99.2/30"\n'
-                        'probe-endpoint = "http"'
-                    ),
-                ),
+                service_toml(),
             )
             artifacts = {
                 artifact.path: artifact.content
@@ -377,23 +334,10 @@ managed-units = ["nas-backup-immich.service"]
             service = self.write(
                 directory,
                 "service.toml",
-                service_toml(
-                    container='''network = "host"
-container-user = 1000
+                service_toml(container='''container-user = 1000
 no-new-privileges = true
 drop-capabilities = ["NET_RAW"]
-shm-size-mib = 128
-
-[[container.endpoints]]
-name = "http"
-port = 8080''',
-                    krun=(
-                        "enabled = true\ncpus = 1\nram-mib = 128\n"
-                        'network = "tap"\n'
-                        'ipv4 = "10.253.99.2/30"\n'
-                        'probe-endpoint = "http"'
-                    ),
-                ),
+shm-size-mib = 128'''),
             )
             artifacts = {
                 artifact.path: artifact.content
@@ -414,23 +358,7 @@ port = 8080''',
             service = self.write(
                 directory,
                 "service.toml",
-                service_toml(
-                    container='''network = "host"
-container-user = 0
-
-[[container.endpoints]]
-name = "http"
-port = 8080''',
-                    # Keep the fixture valid for Fleet's active-TAP
-                    # requirement. The identity assertion is independent of
-                    # networking.
-                    krun=(
-                        "enabled = true\ncpus = 1\nram-mib = 128\n"
-                        'network = "tap"\n'
-                        'ipv4 = "10.253.99.2/30"\n'
-                        'probe-endpoint = "http"'
-                    ),
-                ),
+                service_toml(container="container-user = 0"),
             )
             artifacts = {
                 artifact.path: artifact.content

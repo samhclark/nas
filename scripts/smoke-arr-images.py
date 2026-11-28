@@ -358,8 +358,8 @@ def _smoke_bazarr_stop(spec: Service, name: str, temporary: Path, arguments: lis
     command[command.index(f"--entrypoint={spec.container.entrypoint}")] = "--entrypoint=/bin/sh"
     command[-1:] = [
         "--sdnotify=conmon", "--cgroups=split", "--stop-signal=SIGINT",
-        f"--annotation=krun.cpus={spec.tap_spec.cpus}",
-        f"--annotation=krun.ram_mib={spec.tap_spec.ram_mib}",
+        f"--annotation=krun.cpus={spec.krun.cpus}",
+        f"--annotation=krun.ram_mib={spec.krun.ram_mib}",
         spec.container.image, "-c", probe, spec.container.entrypoint,
     ]
     systemctl = ["systemctl", "--user"]
@@ -370,7 +370,7 @@ def _smoke_bazarr_stop(spec: Service, name: str, temporary: Path, arguments: lis
             f"--property=SuccessExitStatus={spec.unit.success_exit_status}",
             f"--property=ExecStop={podman} stop {name}", podman, *command,
         ], check=True, timeout=spec.unit.timeout_start_sec)
-        deadline = time.monotonic() + spec.tap_spec.probe_timeout_sec
+        deadline = time.monotonic() + spec.krun.probe_timeout_sec
         while not marker.exists():
             if time.monotonic() >= deadline or _inspect(name).stdout.strip() != "true running":
                 raise RuntimeError(_failure_details(name, "Bazarr failed its HTTP readiness check"))

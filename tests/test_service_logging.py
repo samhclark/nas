@@ -43,8 +43,8 @@ class FirstDeploymentLoggingTests(unittest.TestCase):
         # switch, so collection should preserve those records unchanged.
         garage = load_service("garage")
         exporter = load_service("jellyfin-exporter")
-        self.assertEqual(garage["container"]["network"], "host")
-        self.assertEqual(exporter["container"]["network"], "host")
+        self.assertEqual(garage["container"]["log-driver"], "journald")
+        self.assertEqual(exporter["container"]["log-driver"], "journald")
         # GARAGE_LOG_TO_JOURNALD speaks to a journald socket inside the
         # libkrun guest, not the host journal that receives Quadlet stderr.
         self.assertNotIn("GARAGE_LOG_TO_JOURNALD", garage["container"].get("environment", {}))

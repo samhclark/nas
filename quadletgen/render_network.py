@@ -60,8 +60,7 @@ def networkd_network(tap: NetworkTap, fleet: Fleet) -> str:
         "EmitRouter=yes",
         f"Router={gateway.ip}",
     ]
-    krun = tap.krun if isinstance(tap, Service) else None
-    if getattr(krun, "egress", None) == "mullvad":
+    if isinstance(tap, Service) and tap.krun.egress == "mullvad":
         if fleet.egress is None:
             raise ValueError("Mullvad-selected TAP has no fleet egress")
         guest = f"{tap.tap_guest.ip}/32"
@@ -154,7 +153,7 @@ def nft_filter(fleet: Fleet) -> str:
     service_taps = fleet.active_taps
     selected = tuple(
         service for service in service_taps
-        if getattr(service.krun, "egress", None) == "mullvad"
+        if service.krun.egress == "mullvad"
     )
     egress_interface = None
     if selected:
@@ -181,7 +180,7 @@ def nft_filter(fleet: Fleet) -> str:
             f'    iifname "{service.tap_name}" ip saddr '
             f"{service.tap_guest.ip} ct state established,related accept"
         )
-        host_access = service.tap_spec.host_access if isinstance(service, Service) else ()
+        host_access = service.krun.host_access if isinstance(service, Service) else ()
         for host_port in host_access:
             lines.append(
                 f'    iifname "{service.tap_name}" ip saddr '
@@ -498,7 +497,7 @@ def nft_nat(fleet: Fleet) -> str:
     service_taps = fleet.active_taps
     selected = tuple(
         service for service in service_taps
-        if getattr(service.krun, "egress", None) == "mullvad"
+        if service.krun.egress == "mullvad"
     )
     egress_interface = None
     if selected:
@@ -593,4 +592,4 @@ def _tap_header(tap: NetworkTap) -> str:
 def _tap_egress(tap: NetworkTap) -> str | None:
     if not isinstance(tap, Service):
         return None
-    return getattr(tap.krun, "egress", None)
+    return tap.krun.egress

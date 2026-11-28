@@ -24,10 +24,10 @@ class JellyfinExporterIntegrationTests(unittest.TestCase):
 
         self.assertEqual(config["host"]["username"], "_nas_jellyfinmetrics")
         self.assertEqual(config["host"]["uid"], 51260)
-        self.assertTrue(config["krun"]["enabled"])
         self.assertEqual(config["krun"]["cpus"], 1)
         self.assertEqual(config["krun"]["ram-mib"], 128)
-        self.assertEqual(config["container"]["network"], "host")
+        self.assertEqual(config["krun"]["ipv4"], "10.253.8.2/30")
+        self.assertEqual(config["krun"]["probe-endpoint"], "metrics")
         self.assertEqual(config["container"]["secrets"], [{"name": "jellyfin-api-key"}])
 
     def test_exporter_is_loopback_only_and_reads_key_from_file(self):

@@ -20,11 +20,7 @@ from .model import (
     HostSecretConsumer,
     HostVmTap,
     HostIdentity,
-    KrunNetwork,
-    KrunPasst,
-    KrunSpec,
     KrunTap,
-    KrunTsi,
     MullvadEgress,
     Protocol,
     SecretMount,
@@ -170,23 +166,13 @@ def _parse_endpoints(raw: object, name: str) -> tuple[Endpoint, ...]:
         host_port = None
         if "host" in table:
             host = _string(table["host"], f"{item_path}.host")
-            if host.startswith("["):
-                match = re.fullmatch(r"\[([^]]+)]:(\d+)", host)
-                expected_version = 6
-            else:
-                match = re.fullmatch(r"([^:]+):(\d+)", host)
-                expected_version = 4
+            match = re.fullmatch(r"([^:]+):([0-9]+)", host)
             if match is None:
-                _fail(
-                    f"{item_path}.host",
-                    "must be an IPv4:port or [IPv6]:port endpoint",
-                )
+                _fail(f"{item_path}.host", "must be an IPv4:port endpoint")
             try:
-                address = ipaddress.ip_address(match.group(1))
+                address = ipaddress.IPv4Address(match.group(1))
             except ValueError:
-                _fail(f"{item_path}.host", "contains an invalid IP address")
-            if address.version != expected_version:
-                _fail(f"{item_path}.host", "must bracket IPv6 addresses")
+                _fail(f"{item_path}.host", "contains an invalid IPv4 address")
             host_port = int(match.group(2))
         protocol_text = _string(
             table.get("protocol", Protocol.TCP.value),
@@ -313,7 +299,7 @@ def _parse_container(raw: object, name: str) -> ContainerSpec:
         raw,
         path,
         {
-            "image", "log-driver", "entrypoint", "enabled", "network", "container-user",
+            "image", "log-driver", "entrypoint", "enabled", "container-user",
             "health-cmd",
             "no-new-privileges", "drop-capabilities", "shm-size-mib", "dns",
             "sysctls", "environment", "volumes", "secrets", "endpoints", "exec",
@@ -330,19 +316,12 @@ def _parse_container(raw: object, name: str) -> ContainerSpec:
     health_cmd: Literal["none"] | None = (
         "none" if health_cmd_text is not None else None
     )
-    network_text = _optional_string(table, "network", path)
-    if network_text is not None and network_text != "host":
-        _fail(f"{path}.network", 'currently supports only "host"')
-    network: Literal["host"] | None = (
-        "host" if network_text is not None else None
-    )
     exec_text = _optional_string(table, "exec", path)
     return ContainerSpec(
         image=image,
         log_driver=log_driver,
         entrypoint=entrypoint,
         enabled=_boolean(table["enabled"], f"{path}.enabled") if "enabled" in table else True,
-        network=network,
         container_user=_integer(table["container-user"], f"{path}.container-user")
         if "container-user" in table else None,
         health_cmd=health_cmd,
@@ -407,90 +386,40 @@ def _parse_host_access(raw: object, name: str) -> tuple[int, ...]:
     return ports
 
 
-def _parse_krun(raw: object, name: str, container: ContainerSpec) -> KrunSpec | None:
-    if raw is None:
-        return None
+def _parse_krun(raw: object, name: str) -> KrunTap:
     path = f"{name}: [krun]"
-    table = _table(
-        raw,
-        path,
-        {
-            "enabled",
-            "cpus",
-            "ram-mib",
-            "network",
-            "ipv4",
-            "probe-endpoint",
-            "probe-timeout-sec",
-            "guest-bootstrap-root",
-            "host-access",
-            "egress",
-        },
-    )
-    enabled = _boolean(_required(table, "enabled", path), f"{path}.enabled")
-    if not enabled:
-        extra = sorted(set(table) - {"enabled"})
-        if extra:
-            _fail(path, f"fields are not allowed when disabled: {', '.join(extra)}")
-        return None
-    cpus = _integer(_required(table, "cpus", path), f"{path}.cpus")
-    ram_mib = _integer(_required(table, "ram-mib", path), f"{path}.ram-mib")
-    network_text = _string(
-        table.get("network", KrunNetwork.TSI.value),
-        f"{path}.network",
-    )
-    if network_text not in {item.value for item in KrunNetwork}:
-        _fail(f"{path}.network", 'must be "tsi", "passt", or "tap"')
-    network = KrunNetwork(network_text)
+    table = _table(raw, path, {
+        "cpus", "ram-mib", "ipv4", "probe-endpoint", "probe-timeout-sec",
+        "guest-bootstrap-root", "host-access", "egress",
+    })
     egress = table.get("egress")
     if egress is not None:
         egress = _string(egress, f"{path}.egress")
         if egress != "mullvad":
             _fail(f"{path}.egress", 'must be "mullvad"')
-    tap_only_present = any(
-        key in table
-        for key in (
-            "ipv4",
-            "probe-endpoint",
-            "probe-timeout-sec",
-            "host-access",
-            "guest-bootstrap-root",
-        )
+    ipv4_text = _string(_required(table, "ipv4", path), f"{path}.ipv4")
+    try:
+        ipv4 = ipaddress.ip_interface(ipv4_text)
+    except ValueError:
+        _fail(f"{path}.ipv4", "must be an IPv4 interface address")
+    if not isinstance(ipv4, ipaddress.IPv4Interface):
+        _fail(f"{path}.ipv4", "must be an IPv4 interface address")
+    return KrunTap(
+        cpus=_integer(_required(table, "cpus", path), f"{path}.cpus"),
+        ram_mib=_integer(_required(table, "ram-mib", path), f"{path}.ram-mib"),
+        ipv4=ipv4,
+        probe_endpoint=_string(
+            _required(table, "probe-endpoint", path), f"{path}.probe-endpoint"
+        ),
+        probe_timeout_sec=_integer(
+            table.get("probe-timeout-sec", 30), f"{path}.probe-timeout-sec"
+        ),
+        host_access=_parse_host_access(table.get("host-access"), name),
+        guest_bootstrap_root=_boolean(
+            table.get("guest-bootstrap-root", False), f"{path}.guest-bootstrap-root"
+        ),
+        egress=egress,
     )
-    if network is KrunNetwork.TAP:
-        try:
-            ipv4_text = _string(_required(table, "ipv4", path), f"{path}.ipv4")
-            parsed = ipaddress.ip_interface(ipv4_text)
-        except (TypeError, ValueError):
-            _fail(f"{path}.ipv4", "must be an IPv4 interface address")
-        if not isinstance(parsed, ipaddress.IPv4Interface):
-            _fail(f"{path}.ipv4", "must be an IPv4 interface address")
-        ipv4 = parsed
-        probe_endpoint = _string(
-            _required(table, "probe-endpoint", path),
-            f"{path}.probe-endpoint",
-        )
-        return KrunTap(
-            cpus=cpus,
-            ram_mib=ram_mib,
-            ipv4=ipv4,
-            probe_endpoint=probe_endpoint,
-            probe_timeout_sec=_integer(
-                table.get("probe-timeout-sec", 30),
-                f"{path}.probe-timeout-sec",
-            ),
-            host_access=_parse_host_access(table.get("host-access"), name),
-            guest_bootstrap_root=_boolean(
-                table.get("guest-bootstrap-root", False),
-                f"{path}.guest-bootstrap-root",
-            ),
-            egress=egress,
-        )
-    if tap_only_present:
-        _fail(path, 'TAP-only fields require network = "tap"')
-    if network is KrunNetwork.PASST:
-        return KrunPasst(cpus, ram_mib, egress=egress)
-    return KrunTsi(cpus, ram_mib, egress=egress)
 
 
 def _parse_assets(
@@ -853,13 +782,13 @@ def load_service(toml_path: Path) -> Service:
             "unit",
         },
     )
-    for required in ("service", "host", "container"):
+    for required in ("service", "host", "container", "krun"):
         if required not in top:
             _fail(name, f"missing required [{required}] section")
     info = _parse_service_info(top["service"], name)
     host = _parse_host(top["host"], name)
     container = _parse_container(top["container"], name)
-    krun = _parse_krun(top.get("krun"), name, container)
+    krun = _parse_krun(top["krun"], name)
     return Service(
         source=toml_path,
         info=info,

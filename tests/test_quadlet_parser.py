@@ -41,7 +41,7 @@ class StrictParserTests(unittest.TestCase):
         self.assert_invalid(
             service_toml(
                 krun=(
-                    "enabled = true\ncpus = 1\nram-mib = 128\n"
+                    "cpus = 1\nram-mib = 128\n"
                     "network-mode = \"tap\""
                 )
             ),
@@ -68,14 +68,11 @@ url = "http://127.0.0.1:8080/health"'''
         )
         self.assert_invalid(
             service_toml(
-                container='''network = "host"
-[[container.endpoints]]
+                container='''[[container.endpoints]]
 name = "http"
 port = 8080''',
-                krun='''enabled = true
-cpus = 1
+                krun='''cpus = 1
 ram-mib = 128
-network = "tap"
 ipv4 = "10.253.99.2/30"
 probe-endpoint = "http"
 [[krun.ingress]]
@@ -220,13 +217,14 @@ port = 80
 
 [[container.endpoints]]
 name = "dns"
-host = "[0:0:0:0:0:0:0:1]:5353"
+host = "127.0.0.1:5353"
 port = 5353
 protocol = "udp"
 
 [[container.secrets]]
 name = "token"
-"""
+""",
+                probe_endpoint="http",
             )
         )
 
@@ -240,7 +238,7 @@ name = "token"
         )
         self.assertEqual(
             service.container.endpoints[1].publication,
-            "[::1]:5353",
+            "127.0.0.1:5353",
         )
         self.assertEqual(service.container.sysctls, ("net.ipv4.ip_forward=1",))
         self.assertEqual(service.container.secrets[0].name, "token")
@@ -249,6 +247,7 @@ name = "token"
         cases = {
             "hostname": 'host = "localhost:8080"\nport = 80',
             "unbracketed IPv6": 'host = "::1:8080"\nport = 80',
+            "bracketed IPv6": 'host = "[::1]:8080"\nport = 80',
             "port zero": 'host = "127.0.0.1:0"\nport = 80',
             "boolean": 'host = "127.0.0.1:8080"\nport = true',
             "protocol": (
@@ -284,25 +283,36 @@ name = "token"
         self.assert_invalid_field(
             service_toml(
                 krun=(
-                    "enabled = true\ncpus = 1\nram-mib = 128\n"
+                    "cpus = 1\nram-mib = 128\n"
                     'network = ["tap"]'
                 )
             ),
-            "[krun].network",
+            "unknown keys: network",
         )
 
-    def test_duplicate_ports_use_typed_canonical_endpoints(self):
+    def test_tap_rejects_publication_on_a_lan_address(self):
+        self.assert_invalid(
+            service_toml(
+                container=(
+                    "[[container.endpoints]]\n"
+                    'name = "http"\nhost = "192.168.1.2:8080"\nport = 80'
+                )
+            ),
+            'support only "127.0.0.1" or "0.0.0.0"',
+        )
+
+    def test_rejects_duplicate_host_publications_for_distinct_guest_ports(self):
         self.assert_invalid(
             service_toml(
                 container=(
                     "[[container.endpoints]]\n"
                     'name = "dns-one"\n'
-                    'host = "[::1]:5353"\n'
+                    'host = "127.0.0.1:5353"\n'
                     "port = 5353\n"
                     'protocol = "udp"\n\n'
                     "[[container.endpoints]]\n"
                     'name = "dns-two"\n'
-                    'host = "[0:0:0:0:0:0:0:1]:5353"\n'
+                    'host = "127.0.0.1:5353"\n'
                     "port = 5354\n"
                     'protocol = "udp"'
                 )
@@ -310,44 +320,23 @@ name = "token"
             "duplicate publication",
         )
 
-    def test_rejects_host_ports_without_tap_exception(self):
+    def test_requires_krun_and_rejects_legacy_fields(self):
+        source = service_toml()
+        self.assert_invalid(source.split("[krun]")[0], "krun")
         self.assert_invalid(
-            service_toml(
-                container=(
-                    'network = "host"\n\n[[container.endpoints]]\n'
-                    'name = "http"\n'
-                    'host = "127.0.0.1:8080"\nport = 80'
-                )
-            ),
-            "cannot be used with network",
+            service_toml(container='network = "host"'), "unknown keys: network"
         )
-
-    def test_rejects_invalid_krun_variants(self):
-        cases = {
-            "missing enabled": "cpus = 1\nram-mib = 128",
-            "disabled fields": "enabled = false\ncpus = 1",
-            "low RAM": "enabled = true\ncpus = 1\nram-mib = 127",
-            "passt host": (
-                "enabled = true\ncpus = 1\nram-mib = 128\n"
-                'network = "passt"'
-            ),
-        }
-        for label, krun in cases.items():
-            with self.subTest(label=label):
-                container = 'network = "host"' if label == "passt host" else ""
-                self.assert_invalid(
-                    service_toml(container=container, krun=krun),
-                    "krun",
-                )
-
-    def test_disabled_krun_normalizes_to_absence(self):
-        self.assertIsNone(self.load(service_toml(krun="enabled = false")).krun)
+        self.assert_invalid(source + "enabled = false\n", "unknown keys: enabled")
+        self.assert_invalid(source + 'network = "tap"\n', "unknown keys: network")
+        self.assert_invalid_field(
+            source.replace("ram-mib = 128", "ram-mib = 127"), "[krun].ram-mib"
+        )
 
     def test_tap_uses_named_probe_endpoint_and_derives_network_values(self):
         service = self.load(
             service_toml(
                 container=(
-                    'network = "host"\n\n[[container.endpoints]]\n'
+                    '[[container.endpoints]]\n'
                     'name = "admin"\n'
                     'host = "127.0.0.1:8081"\nport = 8081\n\n'
                     '[[container.endpoints]]\n'
@@ -355,8 +344,8 @@ name = "token"
                     'host = "127.0.0.1:8080"\nport = 8080'
                 ),
                 krun=(
-                    "enabled = true\ncpus = 1\nram-mib = 128\n"
-                    'network = "tap"\nipv4 = "10.253.99.2/30"\n'
+                    "cpus = 1\nram-mib = 128\n"
+                    'ipv4 = "10.253.99.2/30"\n'
                     "probe-timeout-sec = 120\n"
                     'probe-endpoint = "http"'
                 ),
@@ -367,9 +356,9 @@ name = "token"
         self.assertEqual(service.tap_name, "krun-51999")
         self.assertEqual(str(service.tap_guest), "10.253.99.2/30")
         self.assertEqual(str(service.tap_gateway), "10.253.99.1/30")
-        self.assertEqual(service.tap_spec.probe_endpoint, "http")
-        self.assertEqual(service.tap_spec.probe_timeout_sec, 120)
-        self.assertFalse(service.tap_spec.guest_bootstrap_root)
+        self.assertEqual(service.krun.probe_endpoint, "http")
+        self.assertEqual(service.krun.probe_timeout_sec, 120)
+        self.assertFalse(service.krun.guest_bootstrap_root)
         artifacts = {
             artifact.path: artifact.content
             for artifact in compile_fleet(Fleet.build([service]))
@@ -384,22 +373,19 @@ name = "token"
 
     def test_guest_root_bootstrap_retains_the_host_mapped_identity(self):
         source = service_toml(
-            container='''network = "host"
-container-user = 1000
+            container='''container-user = 1000
 entrypoint = "/usr/share/nas/service/entrypoint.sh"
 [[container.endpoints]]
 name = "http"
 port = 8080''',
-            krun='''enabled = true
-cpus = 1
+            krun='''cpus = 1
 ram-mib = 128
-network = "tap"
 ipv4 = "10.253.99.2/30"
 probe-endpoint = "http"
 guest-bootstrap-root = true''',
         )
         service = self.load(source)
-        self.assertTrue(service.tap_spec.guest_bootstrap_root)
+        self.assertTrue(service.krun.guest_bootstrap_root)
         unit = next(
             artifact.content
             for artifact in compile_fleet(Fleet.build([service]))
@@ -424,26 +410,17 @@ guest-bootstrap-root = true''',
             source.replace('guest-bootstrap-root = true', 'guest-bootstrap-root = 1'),
             "[krun].guest-bootstrap-root",
         )
-        self.assert_invalid(
-            service_toml(
-                krun='''enabled = true
-cpus = 1
-ram-mib = 128
-guest-bootstrap-root = true''',
-            ),
-            "TAP-only fields",
-        )
 
     def test_tap_probe_must_reference_a_declared_tcp_endpoint(self):
         container = (
-            'network = "host"\n\n[[container.endpoints]]\n'
+            '[[container.endpoints]]\n'
             'name = "dns"\n'
             'host = "127.0.0.1:8080"\nport = 8080\n'
             'protocol = "udp"'
         )
         base_krun = (
-            "enabled = true\ncpus = 1\nram-mib = 128\n"
-            'network = "tap"\nipv4 = "10.253.99.2/30"'
+            "cpus = 1\nram-mib = 128\n"
+            'ipv4 = "10.253.99.2/30"'
         )
 
         self.assert_invalid(

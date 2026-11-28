@@ -20,7 +20,6 @@ mapped-container-id = 1000
 [container]
 image = "lscr.io/linuxserver/prowlarr:3.1.0.5799-ls170@sha256:2806c9b763810589c42157730d547c293639e55c7610e9f5069314854639ec48"
 log-driver = "journald"
-network = "host"
 container-user = 1000
 entrypoint = "/usr/share/nas/prowlarr/prowlarr-entrypoint.sh"
 health-cmd = "none"
@@ -42,10 +41,8 @@ target = "/usr/share/nas/prowlarr"
 options = "ro"
 
 [krun]
-enabled = true
 cpus = 1
 ram-mib = 512
-network = "tap"
 ipv4 = "10.253.16.2/30"
 probe-endpoint = "http"
 probe-timeout-sec = 300

@@ -56,15 +56,13 @@ class MullvadEgressTests(unittest.TestCase):
             uid=uid,
             subid_start=subid_start,
             container=(
-                'network = "host"\n\n'
                 '[[container.endpoints]]\n'
                 'name = "http"\n'
                 'port = 8080\n'
                 f"{consumer_text}"
             ),
             krun=(
-                "enabled = true\ncpus = 1\nram-mib = 128\n"
-                'network = "tap"\n'
+                "cpus = 1\nram-mib = 128\n"
                 f'ipv4 = "{ipv4}"\n'
                 'probe-endpoint = "http"\n'
                 f"{egress}"
@@ -631,21 +629,12 @@ class MullvadEgressTests(unittest.TestCase):
             ):
                 verify_sops(fleet, sops_path)
 
-    def test_service_egress_requires_an_active_tap(self):
+    def test_service_egress_requires_an_enabled_container(self):
         with tempfile.TemporaryDirectory(dir=REPO) as directory_name:
-            directory = Path(directory_name)
-            path = directory / "download.toml"
+            path = Path(directory_name) / "download.toml"
             path.write_text(
-                service_toml(
-                    name="download",
-                    uid=51999,
-                    subid_start=519990000,
-                    krun=(
-                        "enabled = true\ncpus = 1\nram-mib = 128\n"
-                        'network = "tsi"\n'
-                        'egress = "mullvad"'
-                    ),
-                )
+                service_toml(name="download", container="enabled = false")
+                + 'egress = "mullvad"\n'
             )
             with self.assertRaisesRegex(ConfigError, "requires an active TAP"):
                 load_service(path)
